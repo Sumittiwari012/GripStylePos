@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import BillingSection from './billingSection';
 import PurchaseMasterList from './Purchasemasterlist';
 import PurchaseDetailList from './Purchasedetaillist';
-import PaymentList from './PaymentList';
+import PaymentList from './Paymentlist';
 import CustomerList from './Customerlist';
 
 const API_BASE_URL = 'http://gripstyleapi.runasp.net';
