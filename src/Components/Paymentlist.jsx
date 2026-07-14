@@ -1,7 +1,7 @@
 import React from 'react';
 import DataTable from './DataTable';
 
-const API_BASE_URL = 'http://gripstyleapi.runasp.net';
+const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 function PaymentList() {
   const columns = [

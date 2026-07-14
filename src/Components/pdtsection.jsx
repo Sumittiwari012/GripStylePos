@@ -5,7 +5,7 @@ import PurchaseDetailList from './Purchasedetaillist';
 import PaymentList from './Paymentlist';
 import CustomerList from './Customerlist';
 
-const API_BASE_URL = 'http://gripstyleapi.runasp.net';
+const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 function Pdtsection() {
   const [searchTerm, setSearchTerm] = useState('');

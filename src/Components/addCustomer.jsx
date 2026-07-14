@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const API_BASE_URL = 'http://gripstyleapi.runasp.net';
+const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 // onCustomerAdded lets the parent (BillingSection) know a customer was created
 function AddCustomer({ onClose, onCustomerAdded }) {

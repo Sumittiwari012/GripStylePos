@@ -4,7 +4,7 @@ import Quotation from './quotation';
 import Payment from './payment';
 import InvoiceBill from './invoiceBill';
 
-const API_BASE_URL = 'http://gripstyleapi.runasp.net';
+const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 const getInvoiceNumber = () => {
   const today = new Date();
@@ -150,7 +150,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
 
   // ── Finalize sale: call API, then show receipt, then reset everything ──
   const handlePaymentComplete = async () => {
-    
+
     setIsSubmittingTransaction(true);
     setTransactionError('');
 
