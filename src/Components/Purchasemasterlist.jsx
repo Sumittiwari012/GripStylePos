@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import DataTable from './DataTable';
-import InvoiceBill from './InvoiceBill';
+import InvoiceBill from './invoiceBill';
 
 const API_BASE_URL = 'http://gripstyleapi.runasp.net';
 
