@@ -5,9 +5,8 @@ const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 // onCustomerAdded lets the parent (BillingSection) know a customer was created
 function AddCustomer({ onClose, onCustomerAdded }) {
   const [customerInfo, setCustomerInfo] = useState({
-    name: '',
-    phone: '',
-    address: ''
+    name: 'WALK-IN', // Set default to WALK-IN
+    phone: ''
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -28,8 +27,7 @@ function AddCustomer({ onClose, onCustomerAdded }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           Name: customerInfo.name,
-          PhoneNumber: customerInfo.phone,
-          Address: customerInfo.address
+          PhoneNumber: customerInfo.phone
         })
       });
 
@@ -79,22 +77,10 @@ function AddCustomer({ onClose, onCustomerAdded }) {
             <input
               type="tel"
               name="phone"
-              placeholder="e.g. +1 555-0198"
+              placeholder="e.g. +91 9876543210"
               value={customerInfo.phone}
               onChange={handleChange}
               style={styles.input}
-              required
-            />
-          </div>
-
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>Address</label>
-            <textarea
-              name="address"
-              placeholder="Full shipping/billing address"
-              value={customerInfo.address}
-              onChange={handleChange}
-              style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
               required
             />
           </div>

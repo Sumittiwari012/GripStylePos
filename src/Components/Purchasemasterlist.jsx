@@ -30,7 +30,9 @@ function PurchaseMasterList() {
           name: item.productName,
           quantity: item.quantity,
           price: item.salePrice,
-          cgst: item.cgst ?? 0
+          cgst: item.cgst ?? 0,
+          // Added the HSN mapping here:
+          hsnCode: item.hsnCode ?? item.hsn ?? item.HSNCode ?? '-' 
         })),
         totalAmount: data.totalAmount,
         discount: data.discount,

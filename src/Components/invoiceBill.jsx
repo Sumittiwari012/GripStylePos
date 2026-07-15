@@ -253,7 +253,7 @@ function InvoiceBill({ invoice, onClose }) {
 
           <ul style={styles.termsList}>
             <li>All offers are subject to applicable T&C.</li>
-            <li>Please retain the product label and invoice to be eligible to return/exchange the product within 30 days from the date of invoice.</li>
+            <li>Please retain the product label and invoice to be eligible to return/exchange the product within 7 days from the date of invoice.</li>
             <li>All products which need to be exchanged should be in their original condition.</li>
             <li>If you do not have a product label and an invoice, return/exchange will not be accepted.</li>
           </ul>
@@ -291,8 +291,8 @@ const styles = {
     borderRadius: '8px', boxShadow: '0 8px 35px rgba(0,0,0,0.2)'
   },
   header: { textAlign: 'center', marginBottom: '15px' },
-  logo: { width: '150px', objectFit: 'contain', marginBottom: '5px' }, // Shrunk logo
-  companyName: { margin: '0 0 4px 0', fontSize: '1.2rem', fontWeight: 'bold' },
+  logo: { width: '250px', objectFit: 'contain', marginBottom: '5px' }, // Shrunk logo
+  companyName: { margin: '0 0 4px 0', fontSize: '0.9rem', fontWeight: 'bold' },
   address: { margin: 0, fontSize: '0.85rem', color: '#333' },
   legalBlock: { textAlign: 'center', padding: '10px 0', marginBottom: '10px' },
   legalRow: { margin: '2px 0', fontSize: '0.8rem', color: '#333' },
