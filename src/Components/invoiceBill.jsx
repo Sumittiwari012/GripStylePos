@@ -1,5 +1,6 @@
 import React from 'react';
-
+import GripStyleLogo from "../assets/gripstyle-logo.png";
+import Barcode from 'react-barcode';  
 function InvoiceBill({ invoice, onClose }) {
   const { invoiceNumber, customer, cart, totalAmount, discount, taxAmount, payableAmount, payments, completedAt } = invoice;
 
@@ -25,7 +26,28 @@ function InvoiceBill({ invoice, onClose }) {
           <meta charset="utf-8" />
           <style>
             * { box-sizing: border-box; }
-            body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 20px; color: #222; }
+            body {
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  padding: 20px;
+  color: #000;
+  font-weight: 700;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #000;
+}
+
+th, td {
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+h1, h2, h3, p, span, div {
+  color: #000 !important;
+}
             table { width: 100%; border-collapse: collapse; }
           </style>
         </head>
@@ -49,10 +71,30 @@ function InvoiceBill({ invoice, onClose }) {
       <div style={styles.modalWindow}>
         <div id="invoice-print-area">
           <div style={styles.header}>
-            <h1 style={styles.brand}>GRIP STYLE</h1>
-            <h2 style={styles.title}>Invoice #{invoiceNumber}</h2>
-            <p style={styles.date}>{new Date(completedAt).toLocaleDateString()}</p>
-          </div>
+  <img
+    src={GripStyleLogo}
+    alt="Grip Style Logo"
+    style={styles.logo}
+  />
+
+  <h1 style={styles.companyName}>
+    Mohua's Fashion Industries Pvt. Ltd
+  </h1>
+
+  <p style={styles.address}>
+    55/6 S.B.N.G LANE, BARANAGAR,
+    <br />
+    KOLKATA - 700036
+  </p>
+
+  <h2 style={styles.invoiceTitle}>
+    Invoice {invoiceNumber}
+  </h2>
+
+  <p style={styles.date}>
+    {new Date(completedAt).toLocaleDateString()}
+  </p>
+</div>
 
           {customer && (
             <div style={styles.customerBlock}>
@@ -108,6 +150,16 @@ function InvoiceBill({ invoice, onClose }) {
               </div>
             ))}
           </div>
+          <div style={styles.barcodeContainer}>
+  <Barcode
+    value={invoiceNumber}
+    width={1.6}
+    height={50}
+    fontSize={12}
+    displayValue={true}
+    margin={0}
+  />
+</div>
         </div>
 
         <div style={styles.actions}>
@@ -120,50 +172,181 @@ function InvoiceBill({ invoice, onClose }) {
 }
 
 const styles = {
-  overlay: {
-    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)', display: 'flex',
-    justifyContent: 'center', alignItems: 'center', zIndex: 2000
-  },
-  modalWindow: {
-    backgroundColor: '#fff', padding: '25px', borderRadius: '8px',
-    width: '90%', maxWidth: '450px', maxHeight: '85vh', overflowY: 'auto',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.25)'
-  },
-  header: { textAlign: 'center', marginBottom: '15px' },
-  brand: {
-    margin: '0 0 8px 0',
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    letterSpacing: '1px',
-    color: '#222'
-  },
-  title: { margin: 0, fontSize: '1.3rem', color: '#28a745' },
-  date: { margin: '4px 0 0 0', fontSize: '0.8rem', color: '#888' },
-  customerBlock: {
-    display: 'flex', flexDirection: 'column', gap: '2px',
-    borderBottom: '1px dashed #ccc', paddingBottom: '10px', marginBottom: '10px', fontSize: '0.9rem'
-  },
-  table: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '0.75rem' },
-  th: { textAlign: 'left', borderBottom: '2px solid #ddd', padding: '6px 4px', color: '#555' },
-  td: { padding: '6px 4px', borderBottom: '1px solid #f0f0f0' },
-  summaryBlock: { marginBottom: '15px' },
-  summaryRow: { display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#555', marginBottom: '4px' },
-  summaryTotal: {
-    display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem',
-    borderTop: '1px dashed #ccc', paddingTop: '6px', marginTop: '6px'
-  },
-  subTitle: { fontSize: '0.95rem', margin: '0 0 6px 0', color: '#333' },
-  paymentsBlock: { marginBottom: '15px' },
-  actions: { display: 'flex', gap: '10px' },
-  printButton: {
-    flex: 1, padding: '10px', backgroundColor: '#eee', border: '1px solid #ccc',
-    borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'
-  },
-  newSaleButton: {
-    flex: 1, padding: '10px', backgroundColor: '#007bff', color: '#fff',
-    border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'
-  }
+  
+  header: {
+  textAlign: 'center',
+  marginBottom: '20px',
+  color: '#000'
+},
+
+logo: {
+  width: '400px',
+  height: '180px',
+  objectFit: 'contain',
+  marginBottom: '-20px',
+  marginTop: '-20px'
+},
+companyName: {
+  margin: 0,
+  fontSize: '1.6rem',
+  fontWeight: '900',
+  color: '#000',
+  letterSpacing: '1px'
+},
+barcodeContainer: {
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginTop: '25px',
+  paddingTop: '15px',
+  borderTop: '2px solid #000'
+},
+address: {
+  margin: '8px 0 12px 0',
+  fontSize: '0.9rem',
+  fontWeight: '700',
+  color: '#000',
+  lineHeight: '1.5'
+},
+
+invoiceTitle: {
+  margin: 0,
+  fontSize: '1.3rem',
+  fontWeight: '900',
+  color: '#000'
+},
+
+date: {
+  marginTop: '6px',
+  fontSize: '0.9rem',
+  fontWeight: '700',
+  color: '#000'
+},
+
+customerBlock: {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+  borderBottom: '2px solid #000',
+  paddingBottom: '10px',
+  marginBottom: '12px',
+  fontSize: '0.95rem',
+  fontWeight: '800',
+  color: '#000'
+},
+
+table: {
+  width: '100%',
+  borderCollapse: 'collapse',
+  marginBottom: '15px',
+  fontSize: '0.8rem',
+  color: '#000'
+},
+
+th: {
+  textAlign: 'left',
+  borderBottom: '2px solid #000',
+  padding: '6px 4px',
+  color: '#000',
+  fontWeight: '900'
+},
+
+td: {
+  padding: '6px 4px',
+  borderBottom: '1px solid #000',
+  color: '#000',
+  fontWeight: '700'
+},
+
+summaryRow: {
+  display: 'flex',
+  justifyContent: 'space-between',
+  fontSize: '0.95rem',
+  color: '#000',
+  fontWeight: '800',
+  marginBottom: '6px'
+},
+
+summaryTotal: {
+  display: 'flex',
+  justifyContent: 'space-between',
+  fontWeight: '900',
+  fontSize: '1.25rem',
+  borderTop: '2px solid #000',
+  paddingTop: '8px',
+  marginTop: '8px',
+  color: '#000'
+},
+
+subTitle: {
+  fontSize: '1rem',
+  margin: '0 0 8px 0',
+  color: '#000',
+  fontWeight: '900'
+},
+overlay: {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  width: '100vw',
+  height: '100vh',
+  backgroundColor: 'rgba(0,0,0,0.65)',
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 9999
+},
+
+modalWindow: {
+  backgroundColor: '#fff',
+  width: '90%',
+  maxWidth: '850px',
+  maxHeight: '90vh',
+  overflowY: 'auto',
+  padding: '35px',
+  borderRadius: '12px',
+  boxShadow: '0 8px 35px rgba(0,0,0,0.35)'
+},
+
+summaryBlock: {
+  marginTop: '20px',
+  marginBottom: '20px'
+},
+
+paymentsBlock: {
+  marginTop: '15px',
+  marginBottom: '20px'
+},
+
+actions: {
+  display: 'flex',
+  gap: '12px',
+  marginTop: '20px'
+},
+
+printButton: {
+  flex: 1,
+  padding: '12px',
+  border: '1px solid #000',
+  backgroundColor: '#f5f5f5',
+  fontWeight: 'bold',
+  fontSize: '1rem',
+  cursor: 'pointer',
+  borderRadius: '6px'
+},
+
+newSaleButton: {
+  flex: 1,
+  padding: '12px',
+  border: 'none',
+  backgroundColor: '#000',
+  color: '#fff',
+  fontWeight: 'bold',
+  fontSize: '1rem',
+  cursor: 'pointer',
+  borderRadius: '6px'
+}
+
 };
 
 export default InvoiceBill;
