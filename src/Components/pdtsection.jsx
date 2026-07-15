@@ -18,8 +18,9 @@ function Pdtsection() {
 
 const handleAddToCart = (product) => {
   const salePrice = Number(product.retailSalePrice) || 0;
-  const cgst = Number(product.cgst) || 0;
-  const sgst = Number(product.sgst) || 0;
+  const cgst = Number(product.CGST ?? product.cgst) || 0;
+const sgst = Number(product.SGST ?? product.sgst) || 0;
+const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
 
   setCart((prevCart) => {
     const existing = prevCart.find((item) => item.id === product.id);
@@ -38,6 +39,7 @@ const handleAddToCart = (product) => {
         price: salePrice,
         cgst,
         sgst,
+        hsn,
         barcode: product.barcode,
         quantity: 1
       }

@@ -103,6 +103,8 @@ function BillingSection({ products = [], cart = [], setCart }) {
     const salePrice = Number(product.retailSalePrice) || 0;
     const cgst = Number(product.cgst) || 0;
     const sgst = Number(product.sgst) || 0;
+    // Normalize HSN field: product master may send it as HSNCode or hsnCode.
+    const hsn = product.HSNCode ?? product.hsnCode ?? '-';
 
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.id === product.id);
@@ -113,7 +115,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
       }
       return [
         ...prevCart,
-        { id: product.id, name: product.productName, price: salePrice, cgst, sgst, barcode: product.barcode, quantity: 1 }
+        { id: product.id, name: product.productName, price: salePrice, cgst, sgst, barcode: product.barcode, hsn, quantity: 1 }
       ];
     });
     setItemSearchTerm('');
@@ -181,7 +183,8 @@ function BillingSection({ products = [], cart = [], setCart }) {
         productId: item.id,
         quantity: item.quantity,
         salePrice: item.price,
-        afterTaxation: item.price * item.quantity
+        afterTaxation: item.price * item.quantity,
+        hsnCode: item.hsn
       })),
       payments: currentPayments.map((p) => ({
         paymentMethod: p.method,
@@ -204,6 +207,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
       }
 
       // ── Success: prepare receipt data before clearing state ──
+      console.log("Cart before printing:", cart);
       setCompletedInvoice({
         invoiceNumber,
         customer: selectedCustomer,
