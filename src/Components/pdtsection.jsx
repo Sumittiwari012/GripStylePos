@@ -4,7 +4,7 @@ import PurchaseMasterList from './Purchasemasterlist';
 import PurchaseDetailList from './Purchasedetaillist';
 import PaymentList from './Paymentlist';
 import CustomerList from './Customerlist';
-
+import ReturnSection from './returnsection';
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 function Pdtsection() {
@@ -174,7 +174,10 @@ const handleAddToCart = (product) => {
                 Customers
               </a>
             </li>
-            <li><a href="#returns" style={styles.link}>Returns</a></li>
+            <li><a href="#returns"
+  onClick={handleNavClick('returns')}
+  style={{ ...styles.link, ...(activeView === 'returns' ? styles.activeLink : {}) }}
+>Returns</a></li>
            
 
             <li>
@@ -206,6 +209,10 @@ const handleAddToCart = (product) => {
           <main className="customers-display" style={styles.mainContent}>
             <CustomerList />
           </main>
+        ) : activeView === 'returns' ? (
+  <main className="returns-display" style={styles.mainContent}>
+    <ReturnSection />
+  </main>
         ) : (
           <main className="product-display" style={styles.mainContent}>
             <div style={styles.searchContainer}>

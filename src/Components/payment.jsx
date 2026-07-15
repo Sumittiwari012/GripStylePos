@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 
-const PAYMENT_METHODS = ['Cash', 'Card', 'UPI'];
+const PAYMENT_METHODS = ['Cash', 'Card', 'UPI','WALLET'];
 
-function Payment({ invoiceNumber, payableAmount, existingPayments = [], onUpdatePayments, onComplete, onClose, isSubmitting = false })  {
+function Payment({ invoiceNumber, payableAmount, walletBalance = 0, existingPayments = [], onUpdatePayments, onComplete, onClose, isSubmitting = false })  {
   const [payments, setPayments] = useState(existingPayments);
   const [method, setMethod] = useState(PAYMENT_METHODS[0]);
   const [amountInput, setAmountInput] = useState('');
@@ -11,6 +11,25 @@ function Payment({ invoiceNumber, payableAmount, existingPayments = [], onUpdate
   const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = Math.max(payableAmount - amountPaid, 0);
   const isFullyPaid = remaining <= 0.001; // float-safe check
+
+  const walletUsed = payments
+    .filter((p) => p.method === 'WALLET')
+    .reduce((sum, p) => sum + p.amount, 0);
+  const walletRemaining = Math.max(walletBalance - walletUsed, 0);
+
+  const handleSelectMethod = (m) => {
+    setMethod(m);
+    setError('');
+
+    if (m === 'WALLET') {
+      // Default to using the full available wallet balance, capped at what's still owed.
+      // The person can still edit this field down for a partial wallet payment.
+      const defaultWalletAmount = Math.min(remaining, walletRemaining);
+      setAmountInput(defaultWalletAmount > 0 ? defaultWalletAmount.toFixed(2) : '');
+    } else {
+      setAmountInput('');
+    }
+  };
 
   const handleAddPayment = () => {
     const amt = Number(amountInput);
@@ -24,6 +43,10 @@ function Payment({ invoiceNumber, payableAmount, existingPayments = [], onUpdate
       setError(`Amount exceeds remaining balance of ₹${remaining.toFixed(2)}.`);
       return;
     }
+    if (method === 'WALLET' && amt > walletRemaining + 0.001) {
+      setError(`Amount exceeds available wallet balance of ₹${walletRemaining.toFixed(2)}.`);
+      return;
+    }
 
     const newPayments = [...payments, { method, amount: amt, paidAt: new Date().toISOString() }];
     setPayments(newPayments);
@@ -32,7 +55,8 @@ function Payment({ invoiceNumber, payableAmount, existingPayments = [], onUpdate
   };
 
   const handlePayFull = () => {
-    setAmountInput(remaining.toFixed(2));
+    const cap = method === 'WALLET' ? Math.min(remaining, walletRemaining) : remaining;
+    setAmountInput(cap.toFixed(2));
   };
 
   const handleRemovePayment = (index) => {
@@ -65,6 +89,12 @@ function Payment({ invoiceNumber, payableAmount, existingPayments = [], onUpdate
             <span>Paid:</span>
             <span>₹{amountPaid.toFixed(2)}</span>
           </div>
+          {walletBalance > 0 && (
+            <div style={styles.amountRow}>
+              <span>Wallet Available:</span>
+              <span>₹{walletRemaining.toFixed(2)}</span>
+            </div>
+          )}
           <div style={{...styles.amountRow, ...styles.remainingRow}}>
             <span>Remaining:</span>
             <strong style={{ color: isFullyPaid ? '#28a745' : '#dc3545' }}>
@@ -76,18 +106,23 @@ function Payment({ invoiceNumber, payableAmount, existingPayments = [], onUpdate
         {!isFullyPaid && (
           <div style={styles.entryForm}>
             <div style={styles.methodRow}>
-              {PAYMENT_METHODS.map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setMethod(m)}
-                  style={{
-                    ...styles.methodButton,
-                    ...(method === m ? styles.methodButtonActive : {})
-                  }}
-                >
-                  {m}
-                </button>
-              ))}
+              {PAYMENT_METHODS.map((m) => {
+                const isWalletDisabled = m === 'WALLET' && walletRemaining <= 0.001;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => handleSelectMethod(m)}
+                    disabled={isWalletDisabled}
+                    style={{
+                      ...styles.methodButton,
+                      ...(method === m ? styles.methodButtonActive : {}),
+                      ...(isWalletDisabled ? styles.methodButtonDisabled : {})
+                    }}
+                  >
+                    {m === 'WALLET' ? `WALLET (₹${walletRemaining.toFixed(2)})` : m}
+                  </button>
+                );
+              })}
             </div>
 
             <div style={styles.inputRow}>
@@ -170,6 +205,9 @@ const styles = {
   },
   methodButtonActive: {
     backgroundColor: '#007bff', color: '#fff', borderColor: '#007bff'
+  },
+  methodButtonDisabled: {
+    opacity: 0.5, cursor: 'not-allowed'
   },
   inputRow: { display: 'flex', gap: '8px' },
   amountInput: {

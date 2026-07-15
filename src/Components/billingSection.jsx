@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import AddCustomer from './addCustomer';
 import Quotation from './quotation';
 import Payment from './payment';
@@ -35,6 +35,20 @@ function BillingSection({ products = [], cart = [], setCart }) {
   const [isSubmittingTransaction, setIsSubmittingTransaction] = useState(false);
   const [transactionError, setTransactionError] = useState('');
 
+  const searchInputRef = useRef(null);
+
+  const focusSearchInput = () => {
+    // small delay lets any closing modal/DOM update finish first
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 50);
+  };
+
+  // Keep the search box focused on initial load
+  useEffect(() => {
+    focusSearchInput();
+  }, []);
+
   const discount = discountByInvoice[invoiceNumber] ?? 0;
 
   const handleDiscountChange = (value) => {
@@ -45,6 +59,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setSelectedCustomer(customer);
     setInvoiceNumber(getInvoiceNumber());
     setIsCustomerWindowOpen(false);
+    focusSearchInput();
   };
 
   const handleSaveQuotation = () => {
@@ -77,6 +92,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
       setPaymentsByInvoice((prev) => ({ ...prev, [quotation.invoiceNumber]: quotation.payments }));
     }
     setIsQuotationListOpen(false);
+    focusSearchInput();
   };
 
   const handleAddFromSearch = (product) => {
@@ -101,6 +117,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
       ];
     });
     setItemSearchTerm('');
+    focusSearchInput();
   };
 
   const increaseCount = (id) => {
@@ -217,6 +234,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
       });
 
       setIsPaymentWindowOpen(false);
+      focusSearchInput();
     } catch (err) {
       console.error('Transaction failed:', err);
       setTransactionError(err.message || 'Transaction failed. Please try again.');
@@ -231,6 +249,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setCart([]);
     setSelectedCustomer(null);
     setInvoiceNumber(null);
+    focusSearchInput();
   };
 
   return (
@@ -263,6 +282,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
 
       <div style={styles.searchWrapper}>
         <input
+          ref={searchInputRef}
           type="text"
           placeholder="Search to add item..."
           value={itemSearchTerm}
@@ -376,10 +396,14 @@ function BillingSection({ products = [], cart = [], setCart }) {
         <Payment
   invoiceNumber={invoiceNumber}
   payableAmount={payableAmount}
+  walletBalance={Number(selectedCustomer?.currentBalance ?? selectedCustomer?.walletValue ?? 0)}
   existingPayments={currentPayments}
   onUpdatePayments={handleUpdatePayments}
   onComplete={handlePaymentComplete}
-  onClose={() => setIsPaymentWindowOpen(false)}
+  onClose={() => {
+    setIsPaymentWindowOpen(false);
+    focusSearchInput();
+  }}
   isSubmitting={isSubmittingTransaction}
 />
       )}
