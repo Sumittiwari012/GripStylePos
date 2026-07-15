@@ -1,10 +1,19 @@
 import React from 'react';
 
-function InvoiceBill({ invoice, onClose }) {
-  const { invoiceNumber, customer, cart, totalAmount, discount, taxAmount, payableAmount, payments, completedAt } = invoice;
+function ReturnBill({ returnData, onClose }) {
+  const {
+    returnInvoiceNumber,
+    originalInvoiceNumber,
+    customerName,
+    customerMobile,
+    items = [],
+    totalAmount,
+    updatedCustomerBalance,
+    completedAt
+  } = returnData;
 
   const handlePrint = () => {
-    const printContent = document.getElementById('invoice-print-area');
+    const printContent = document.getElementById('return-print-area');
     if (!printContent) return;
 
     const iframe = document.createElement('iframe');
@@ -21,7 +30,7 @@ function InvoiceBill({ invoice, onClose }) {
     doc.write(`
       <html>
         <head>
-          <title>Invoice ${invoiceNumber}</title>
+          <title>Return ${returnInvoiceNumber}</title>
           <meta charset="utf-8" />
           <style>
             * { box-sizing: border-box; }
@@ -37,7 +46,6 @@ function InvoiceBill({ invoice, onClose }) {
     iframe.onload = () => {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
-      // Give the print dialog a moment to open before cleaning up the iframe
       setTimeout(() => {
         document.body.removeChild(iframe);
       }, 500);
@@ -47,17 +55,20 @@ function InvoiceBill({ invoice, onClose }) {
   return (
     <div style={styles.overlay}>
       <div style={styles.modalWindow}>
-        <div id="invoice-print-area">
+        <div id="return-print-area">
           <div style={styles.header}>
             <h1 style={styles.brand}>GRIP STYLE</h1>
-            <h2 style={styles.title}>Invoice #{invoiceNumber}</h2>
+            <h2 style={styles.title}>Return Bill #{returnInvoiceNumber}</h2>
+            {originalInvoiceNumber && (
+              <p style={styles.subDate}>Against Invoice #{originalInvoiceNumber}</p>
+            )}
             <p style={styles.date}>{new Date(completedAt).toLocaleDateString()}</p>
           </div>
 
-          {customer && (
+          {(customerName || customerMobile) && (
             <div style={styles.customerBlock}>
-              <strong>{customer.customerName ?? customer.name}</strong>
-              <span>{customer.mobileNumber ?? customer.phoneNumber}</span>
+              <strong>{customerName}</strong>
+              <span>{customerMobile}</span>
             </div>
           )}
 
@@ -67,52 +78,38 @@ function InvoiceBill({ invoice, onClose }) {
                 <th style={styles.th}>Item</th>
                 <th style={styles.th}>Qty</th>
                 <th style={styles.th}>Price</th>
-                <th style={styles.th}>Taxable</th>
-                <th style={styles.th}>Tax</th>
                 <th style={styles.th}>Total</th>
               </tr>
             </thead>
             <tbody>
-              {cart.map((item) => {
-                const cgst = Number(item.cgst) || 0;
-                const itemTotal = item.price * item.quantity;
-                const itemTaxable = itemTotal / (100 + 2 * cgst) * 100;
-                const itemTax = itemTaxable * (cgst / 100) * 2;
-                return (
-                  <tr key={item.id}>
-                    <td style={styles.td}>{item.name}</td>
-                    <td style={styles.td}>{item.quantity}</td>
-                    <td style={styles.td}>₹{item.price.toFixed(2)}</td>
-                    <td style={styles.td}>₹{itemTaxable.toFixed(2)}</td>
-                    <td style={styles.td}>₹{itemTax.toFixed(2)}</td>
-                    <td style={styles.td}>₹{itemTotal.toFixed(2)}</td>
-                  </tr>
-                );
-              })}
+              {items.map((item) => (
+                <tr key={item.productId}>
+                  <td style={styles.td}>{item.productName}</td>
+                  <td style={styles.td}>{item.quantity}</td>
+                  <td style={styles.td}>₹{Number(item.salePrice).toFixed(2)}</td>
+                  <td style={styles.td}>₹{Number(item.lineTotal).toFixed(2)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
 
           <div style={styles.summaryBlock}>
-            <div style={styles.summaryRow}><span>Subtotal:</span><span>₹{totalAmount.toFixed(2)}</span></div>
-            <div style={styles.summaryRow}><span>Discount:</span><span>-₹{Number(discount).toFixed(2)}</span></div>
-            <div style={styles.summaryRow}><span>Tax:</span><span>₹{taxAmount.toFixed(2)}</span></div>
-            <div style={styles.summaryTotal}><span>Total Paid:</span><span>₹{payableAmount.toFixed(2)}</span></div>
-          </div>
-
-          <div style={styles.paymentsBlock}>
-            <h3 style={styles.subTitle}>Payments</h3>
-            {payments.map((p, i) => (
-              <div key={i} style={styles.summaryRow}>
-                <span>{p.method}</span>
-                <span>₹{p.amount.toFixed(2)}</span>
+            <div style={styles.summaryTotal}>
+              <span>Wallet Credited:</span>
+              <span>₹{Number(totalAmount).toFixed(2)}</span>
+            </div>
+            {updatedCustomerBalance != null && (
+              <div style={styles.summaryRow}>
+                <span>Updated Wallet Balance:</span>
+                <span>₹{Number(updatedCustomerBalance).toFixed(2)}</span>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         <div style={styles.actions}>
           <button style={styles.printButton} onClick={handlePrint}>Print</button>
-          <button style={styles.newSaleButton} onClick={onClose}>New Sale</button>
+          <button style={styles.closeButton} onClick={onClose}>Close</button>
         </div>
       </div>
     </div>
@@ -138,32 +135,31 @@ const styles = {
     letterSpacing: '1px',
     color: '#222'
   },
-  title: { margin: 0, fontSize: '1.3rem', color: '#28a745' },
+  title: { margin: 0, fontSize: '1.3rem', color: '#dc3545' },
+  subDate: { margin: '4px 0 0 0', fontSize: '0.85rem', color: '#555' },
   date: { margin: '4px 0 0 0', fontSize: '0.8rem', color: '#888' },
   customerBlock: {
     display: 'flex', flexDirection: 'column', gap: '2px',
     borderBottom: '1px dashed #ccc', paddingBottom: '10px', marginBottom: '10px', fontSize: '0.9rem'
   },
-  table: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '0.75rem' },
+  table: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '0.85rem' },
   th: { textAlign: 'left', borderBottom: '2px solid #ddd', padding: '6px 4px', color: '#555' },
   td: { padding: '6px 4px', borderBottom: '1px solid #f0f0f0' },
   summaryBlock: { marginBottom: '15px' },
   summaryRow: { display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#555', marginBottom: '4px' },
   summaryTotal: {
     display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem',
-    borderTop: '1px dashed #ccc', paddingTop: '6px', marginTop: '6px'
+    borderTop: '1px dashed #ccc', paddingTop: '6px', marginTop: '6px', marginBottom: '6px'
   },
-  subTitle: { fontSize: '0.95rem', margin: '0 0 6px 0', color: '#333' },
-  paymentsBlock: { marginBottom: '15px' },
   actions: { display: 'flex', gap: '10px' },
   printButton: {
     flex: 1, padding: '10px', backgroundColor: '#eee', border: '1px solid #ccc',
     borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'
   },
-  newSaleButton: {
-    flex: 1, padding: '10px', backgroundColor: '#007bff', color: '#fff',
+  closeButton: {
+    flex: 1, padding: '10px', backgroundColor: '#2C6B4B', color: '#fff',
     border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'
   }
 };
 
-export default InvoiceBill;
+export default ReturnBill;

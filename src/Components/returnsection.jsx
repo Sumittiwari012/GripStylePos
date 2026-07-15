@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReturnBill from './returnBill';
 
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
@@ -166,6 +167,20 @@ function ReturnSection() {
       })
     };
 
+    // Snapshot the returned items' display details now, since transaction/selectedItems
+    // get cleared right after a successful submit and the receipt needs this data.
+    const returnedItemsSnapshot = itemsToReturn.map((item) => {
+      const unitAfterTax = item.quantity > 0 ? item.afterTaxation / item.quantity : 0;
+      return {
+        productId: item.productId,
+        productName: item.productName,
+        barcode: item.barcode,
+        quantity: item.returnQty,
+        salePrice: item.salePrice,
+        lineTotal: unitAfterTax * item.returnQty
+      };
+    });
+
     setIsSubmittingReturn(true);
     setSubmitError('');
 
@@ -184,8 +199,13 @@ function ReturnSection() {
 
       setCompletedReturn({
         returnInvoiceNumber: result.returnInvoiceNumber ?? returnInvoiceNumber,
+        originalInvoiceNumber: transaction.invoiceNumber,
+        customerName: transaction.customerName,
+        customerMobile: transaction.customerMobile,
+        items: returnedItemsSnapshot,
         totalAmount: result.totalAmount ?? returnTotal,
-        updatedCustomerBalance: result.updatedCustomerBalance
+        updatedCustomerBalance: result.updatedCustomerBalance,
+        completedAt: new Date().toISOString()
       });
 
       // Return is done - clear the working state so the panel goes back to empty.
@@ -220,15 +240,7 @@ function ReturnSection() {
       {fetchError && <p style={styles.errorText}>{fetchError}</p>}
 
       {completedReturn && (
-        <div style={styles.successBanner}>
-          <strong>Return {completedReturn.returnInvoiceNumber} completed.</strong>
-          <p style={styles.successDetail}>
-            Refunded ₹{Number(completedReturn.totalAmount).toFixed(2)}
-            {completedReturn.updatedCustomerBalance != null && (
-              <> - updated customer balance: ₹{Number(completedReturn.updatedCustomerBalance).toFixed(2)}</>
-            )}
-          </p>
-        </div>
+        <ReturnBill returnData={completedReturn} onClose={() => setCompletedReturn(null)} />
       )}
 
       {transaction && (
@@ -422,18 +434,6 @@ const styles = {
   },
   errorText: {
     color: '#dc3545'
-  },
-  successBanner: {
-    backgroundColor: '#e6f4ea',
-    border: '1px solid #28a745',
-    borderRadius: '8px',
-    padding: '12px 16px',
-    marginBottom: '1rem',
-    color: '#1e5b30'
-  },
-  successDetail: {
-    margin: '4px 0 0 0',
-    fontSize: '0.9rem'
   },
   contentRow: {
     display: 'flex',
