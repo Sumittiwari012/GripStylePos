@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import GripStyleLogo from "../assets/gripstyle-logo.png";
 import Barcode from 'react-barcode';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+
+// Same Baileys WhatsApp service used elsewhere in the app.
+const WA_SERVICE_URL = 'https://whatsapp-service-sr6z.onrender.com';
 
 function InvoiceBill({ invoice, onClose }) {
   const { invoiceNumber, customer, cart, totalAmount, discount, taxAmount, payableAmount, payments, completedAt } = invoice;
+
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+  const [whatsappStatus, setWhatsappStatus] = useState('');
 
   // ── Group items by their CGST rate ──
   const rateGroups = {};
@@ -103,6 +111,74 @@ function InvoiceBill({ invoice, onClose }) {
         document.body.removeChild(iframe);
       }, 500);
     };
+  };
+
+  // ── Renders the invoice area to a canvas, then wraps it in a single-page PDF ──
+  const generateInvoicePdfBlob = async () => {
+    const element = document.getElementById('invoice-print-area');
+    if (!element) return null;
+
+    const canvas = await html2canvas(element, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true
+    });
+    const imgData = canvas.toDataURL('image/png');
+
+    const pdfWidth = 210; // A4 width in mm
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: [pdfWidth, pdfHeight]
+    });
+
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    return pdf.output('blob');
+  };
+
+  // ── Generate the PDF client-side and upload it to the WhatsApp service ──
+  const handleSendWhatsApp = async () => {
+    const phoneNumber = customer?.mobileNumber ?? customer?.phoneNumber;
+
+    if (!phoneNumber) {
+      setWhatsappStatus('❌ No phone number on file for this customer.');
+      return;
+    }
+
+    setIsSendingWhatsApp(true);
+    setWhatsappStatus('Generating PDF...');
+
+    try {
+      const pdfBlob = await generateInvoicePdfBlob();
+      if (!pdfBlob) throw new Error('Could not generate invoice PDF.');
+
+      setWhatsappStatus('Sending via WhatsApp...');
+
+      const formData = new FormData();
+      formData.append('phoneNumber', phoneNumber);
+      formData.append('invoiceNumber', invoiceNumber);
+      formData.append('customerName', customer?.customerName ?? customer?.name ?? '');
+      formData.append('invoicePdf', pdfBlob, `Invoice_${invoiceNumber}.pdf`);
+
+      const res = await fetch(`${WA_SERVICE_URL}/send-invoice`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setWhatsappStatus('✅ Invoice sent via WhatsApp');
+      } else {
+        setWhatsappStatus(`❌ ${data.message}`);
+      }
+    } catch (err) {
+      console.error('WhatsApp send error:', err);
+      setWhatsappStatus(`⚠️ Failed to send: ${err.message}`);
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
   };
 
   return (
@@ -272,8 +348,19 @@ function InvoiceBill({ invoice, onClose }) {
 
         <div style={styles.actions}>
           <button style={styles.printButton} onClick={handlePrint}>Print</button>
+          <button
+            style={styles.whatsappButton}
+            onClick={handleSendWhatsApp}
+            disabled={isSendingWhatsApp}
+          >
+            {isSendingWhatsApp ? 'Sending...' : 'Send via WhatsApp'}
+          </button>
           <button style={styles.newSaleButton} onClick={onClose}>New Sale</button>
         </div>
+
+        {whatsappStatus && (
+          <div style={styles.whatsappStatus}>{whatsappStatus}</div>
+        )}
       </div>
     </div>
   );
@@ -317,7 +404,9 @@ const styles = {
   barcodeContainer: { display: 'flex', justifyContent: 'center', marginTop: '10px' },
   actions: { display: 'flex', gap: '12px', marginTop: '20px' },
   printButton: { flex: 1, padding: '10px', border: '1px solid #000', backgroundColor: '#fff', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' },
-  newSaleButton: { flex: 1, padding: '10px', border: 'none', backgroundColor: '#000', color: '#fff', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }
+  whatsappButton: { flex: 1, padding: '10px', border: 'none', backgroundColor: '#25D366', color: '#fff', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' },
+  newSaleButton: { flex: 1, padding: '10px', border: 'none', backgroundColor: '#000', color: '#fff', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' },
+  whatsappStatus: { marginTop: '10px', fontSize: '0.85rem', textAlign: 'center', color: '#333' }
 };
 
 export default InvoiceBill;
