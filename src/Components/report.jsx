@@ -12,7 +12,7 @@ import {
   Legend
 } from 'recharts';
 
-const API_BASE_URL = 'https://dummypossetup.runasp.net';
+const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 const METHOD_META = {
   Cash: { key: 'cash', color: '#28a745' },

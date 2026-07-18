@@ -6,7 +6,7 @@ import PaymentList from './Paymentlist';
 import CustomerList from './Customerlist';
 import ReturnSection from './returnsection';
 import Report from './report';
-const API_BASE_URL = 'https://dummypossetup.runasp.net';
+const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 function Pdtsection() {
   const [searchTerm, setSearchTerm] = useState('');
