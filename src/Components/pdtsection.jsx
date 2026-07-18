@@ -5,7 +5,8 @@ import PurchaseDetailList from './Purchasedetaillist';
 import PaymentList from './Paymentlist';
 import CustomerList from './Customerlist';
 import ReturnSection from './returnsection';
-const API_BASE_URL = 'https://gripstyleapi.runasp.net';
+import Report from './report';
+const API_BASE_URL = 'https://dummypossetup.runasp.net';
 
 function Pdtsection() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -125,7 +126,7 @@ const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
                   ...(activeView === 'products' ? styles.activeLink : {})
                 }}
               >
-                Listings
+                POS
               </a>
             </li>
             <li>
@@ -181,7 +182,10 @@ const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
   style={{ ...styles.link, ...(activeView === 'returns' ? styles.activeLink : {}) }}
 >Returns</a></li>
            
-
+          <li><a href="#report"
+  onClick={handleNavClick('report')}
+  style={{ ...styles.link, ...(activeView === 'report' ? styles.activeLink : {}) }}
+>Report</a></li>
             <li>
               <button onClick={handleFreeze} style={styles.navButton}>
                 Freeze
@@ -214,6 +218,10 @@ const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
         ) : activeView === 'returns' ? (
   <main className="returns-display" style={styles.mainContent}>
     <ReturnSection />
+    </main>
+     ) : activeView === 'report' ? (
+  <main className="report-display" style={styles.mainContent}>
+    <Report />
   </main>
         ) : (
           <main className="product-display" style={styles.mainContent}>
