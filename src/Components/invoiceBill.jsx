@@ -5,7 +5,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 // Same Baileys WhatsApp service used elsewhere in the app.
-const WA_SERVICE_URL = 'https://whatsapp-service-sr6z.onrender.com';
+const WA_SERVICE_URL = 'https://lightsalmon-pigeon-313595.hostingersite.com';
 
 function InvoiceBill({ invoice, onClose }) {
   const { invoiceNumber, customer, cart, totalAmount, discount, taxAmount, payableAmount, payments, completedAt } = invoice;
