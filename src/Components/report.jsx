@@ -41,7 +41,11 @@ function Report() {
 
   const [settling, setSettling] = useState(false);
   const [settleMessage, setSettleMessage] = useState('');
-  const [settled, setSettled] = useState(false);
+
+  // "none"      → no settlement ever requested this session, button is red and clickable
+  // "pending"   → a settlement request is in flight, button gray & locked
+  // "completed" → already settled, button green & locked
+  const [settlementStatus, setSettlementStatus] = useState('none');
 
   const [checkingStatus, setCheckingStatus] = useState(true);
 
@@ -50,6 +54,7 @@ function Report() {
   const [pettyCashLoading, setPettyCashLoading] = useState(true);
   const [pettyCashError, setPettyCashError] = useState('');
 
+  // ── Settlement status check ──
   useEffect(() => {
     const checkSettlementStatus = async () => {
       const counterId = localStorage.getItem('counterId');
@@ -57,29 +62,27 @@ function Report() {
         setCheckingStatus(false);
         return;
       }
-     try {
-    console.log("Calling settlement API");
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/SettlementRequest/status/${counterId}`);
 
-    const response = await fetch(
-        `${API_BASE_URL}/api/SettlementRequest/status/${counterId}`
-    );
+        if (!response.ok) {
+          setSettlementStatus('none');
+          return;
+        }
 
-    console.log("Response", response.status);
+        const data = await response.json();
 
-    if (!response.ok) {
-        return;
-    }
-
-    const data = await response.json();
-    console.log("Settlement Status Response:", data);
-
-    // Your API returns { pending: true }
-    setSettled(data.pending === true);
-} catch (e) {
-    console.error(e);
-} finally {
-    setCheckingStatus(false);
-}
+        // API returns { status: "none" | "pending" | "completed" }
+        if (data.status === 'pending' || data.status === 'completed') {
+          setSettlementStatus(data.status);
+        } else {
+          setSettlementStatus('none');
+        }
+      } catch (err) {
+        console.error('Settlement status check error:', err);
+      } finally {
+        setCheckingStatus(false);
+      }
     };
 
     checkSettlementStatus();
@@ -105,7 +108,6 @@ function Report() {
         }
 
         setPettyCashInfo(data);
-        console.log('Petty cash response:', data);
       } catch (err) {
         console.error('Petty cash check error:', err);
         setPettyCashError('Could not reach the server.');
@@ -118,7 +120,7 @@ function Report() {
   }, []);
 
   const handleSettlement = async () => {
-    if (settled) return;
+    if (settlementStatus !== 'none') return;
 
     const confirmed = window.confirm('Are you sure you want to initiate settlement?');
     if (!confirmed) return;
@@ -142,13 +144,13 @@ function Report() {
       if (!response.ok) {
         setSettleMessage(data.message || 'Could not initiate settlement.');
         if (response.status === 400) {
-          setSettled(true);
+          setSettlementStatus('pending');
         }
         return;
       }
 
       setSettleMessage('Settlement request initiated.');
-      setSettled(true);
+      setSettlementStatus('pending');
     } catch (err) {
       console.error('Settlement error:', err);
       setSettleMessage('Could not reach the server. Please try again.');
@@ -227,6 +229,16 @@ function Report() {
   const walletAmount = Number(reportData?.wallet?.totalAmount ?? 0);
   const netTotalCollected = Number(reportData?.totalCollected ?? 0) - walletAmount;
 
+  const settlementButtonLabel = checkingStatus
+    ? 'Checking...'
+    : settling
+    ? 'Processing...'
+    : settlementStatus === 'pending'
+    ? 'Pending'
+    : settlementStatus === 'completed'
+    ? 'Settled'
+    : 'Settlement';
+
   return (
     <div style={styles.page}>
       <div style={styles.headerRow}>
@@ -234,12 +246,13 @@ function Report() {
         <button
           style={{
             ...styles.settlementButton,
-            ...(settled || checkingStatus ? styles.settlementButtonDisabled : {})
+            ...(checkingStatus || settlementStatus === 'pending' ? styles.settlementButtonDisabled : {}),
+            ...(settlementStatus === 'completed' ? styles.settlementButtonSettled : {})
           }}
           onClick={handleSettlement}
-          disabled={settling || settled || checkingStatus}
+          disabled={settling || checkingStatus || settlementStatus !== 'none'}
         >
-          {checkingStatus ? 'Checking...' : settling ? 'Processing...' : 'Settlement'}
+          {settlementButtonLabel}
         </button>
       </div>
 
@@ -432,6 +445,10 @@ const styles = {
   },
   settlementButtonDisabled: {
     backgroundColor: '#999',
+    cursor: 'not-allowed'
+  },
+  settlementButtonSettled: {
+    backgroundColor: '#28a745',
     cursor: 'not-allowed'
   },
   settleMessage: {
