@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -39,12 +39,117 @@ function Report() {
   const [error, setError] = useState('');
   const [chartType, setChartType] = useState('bar'); // 'bar' | 'line'
 
-  const fetchReport = async () => {
-    if (!startDate || !endDate) {
+  const [settling, setSettling] = useState(false);
+  const [settleMessage, setSettleMessage] = useState('');
+  const [settled, setSettled] = useState(false);
+
+  const [checkingStatus, setCheckingStatus] = useState(true);
+
+  // ── Petty cash for the current session (read-only) ──
+  const [pettyCashInfo, setPettyCashInfo] = useState(null);
+  const [pettyCashLoading, setPettyCashLoading] = useState(true);
+  const [pettyCashError, setPettyCashError] = useState('');
+
+  useEffect(() => {
+    const checkSettlementStatus = async () => {
+      const counterId = localStorage.getItem('counterId');
+      if (!counterId) {
+        setCheckingStatus(false);
+        return;
+      }
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/SettlementRequest/status/${counterId}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setSettled(Boolean(data.settled));
+      } catch (err) {
+        console.error('Settlement status check error:', err);
+      } finally {
+        setCheckingStatus(false);
+      }
+    };
+
+    checkSettlementStatus();
+  }, []);
+
+  // ── Fetch this session's petty cash on load (read-only display) ──
+  useEffect(() => {
+    const fetchPettyCash = async () => {
+      const counterId = localStorage.getItem('counterId');
+      if (!counterId) {
+        setPettyCashLoading(false);
+        return;
+      }
+      setPettyCashLoading(true);
+      setPettyCashError('');
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/PettyCash/LatestPettyCashByCounterId?CounterId=${counterId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          setPettyCashError(data.message || 'Could not load petty cash.');
+          return;
+        }
+
+        setPettyCashInfo(data);
+        console.log('Petty cash response:', data);
+      } catch (err) {
+        console.error('Petty cash check error:', err);
+        setPettyCashError('Could not reach the server.');
+      } finally {
+        setPettyCashLoading(false);
+      }
+    };
+
+    fetchPettyCash();
+  }, []);
+
+  const handleSettlement = async () => {
+    if (settled) return;
+
+    const confirmed = window.confirm('Are you sure you want to initiate settlement?');
+    if (!confirmed) return;
+
+    const counterId = localStorage.getItem('counterId');
+    if (!counterId) {
+      setSettleMessage('No counter ID found. Please log in again.');
+      return;
+    }
+
+    setSettling(true);
+    setSettleMessage('');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/SettlementRequest/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ counterId: Number(counterId) })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setSettleMessage(data.message || 'Could not initiate settlement.');
+        if (response.status === 400) {
+          setSettled(true);
+        }
+        return;
+      }
+
+      setSettleMessage('Settlement request initiated.');
+      setSettled(true);
+    } catch (err) {
+      console.error('Settlement error:', err);
+      setSettleMessage('Could not reach the server. Please try again.');
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  const fetchReport = async (rangeStart = startDate, rangeEnd = endDate) => {
+    if (!rangeStart || !rangeEnd) {
       setError('Please select both a start and end date.');
       return;
     }
-    if (new Date(startDate) > new Date(endDate)) {
+    if (new Date(rangeStart) > new Date(rangeEnd)) {
       setError('Start date cannot be after end date.');
       return;
     }
@@ -52,7 +157,12 @@ function Report() {
     setIsLoading(true);
     setError('');
     try {
-      const url = `${API_BASE_URL}/DateRangeReport?startDate=${startDate}&endDate=${endDate}`;
+      const counterId = localStorage.getItem('counterId');
+      const params = new URLSearchParams({ startDate: rangeStart, endDate: rangeEnd });
+      if (counterId) {
+        params.set('counterId', counterId);
+      }
+      const url = `${API_BASE_URL}/DateRangeReport?${params}`;
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`Request failed with status ${res.status}`);
@@ -67,6 +177,12 @@ function Report() {
       setIsLoading(false);
     }
   };
+
+  // Load today's report by default on mount
+  useEffect(() => {
+    fetchReport(todayStr(), todayStr());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Build one combined dataset: date -> { Cash, Card, UPI, Wallet }
   const chartData = useMemo(() => {
@@ -100,7 +216,30 @@ function Report() {
 
   return (
     <div style={styles.page}>
-      <h2 style={styles.pageTitle}>Payments Report</h2>
+      <div style={styles.headerRow}>
+        <h2 style={styles.pageTitle}>Payments Report</h2>
+        <button
+          style={{
+            ...styles.settlementButton,
+            ...(settled || checkingStatus ? styles.settlementButtonDisabled : {})
+          }}
+          onClick={handleSettlement}
+          disabled={settling || settled || checkingStatus}
+        >
+          {checkingStatus ? 'Checking...' : settling ? 'Processing...' : 'Settlement'}
+        </button>
+      </div>
+
+      {settleMessage && <p style={styles.settleMessage}>{settleMessage}</p>}
+
+      {/* ── Petty cash for this session (read-only) ── */}
+      {!pettyCashLoading && !pettyCashError && pettyCashInfo?.pettyCash != null && (
+        <div style={styles.pettyCashBanner}>
+          <span style={styles.pettyCashLabel}>Petty Cash</span>
+          <span style={styles.pettyCashAmount}>₹{Number(pettyCashInfo.pettyCash).toFixed(2)}</span>
+        </div>
+      )}
+      {pettyCashError && <p style={styles.errorText}>{pettyCashError}</p>}
 
       {/* ── Date range controls ── */}
       <div style={styles.filterBar}>
@@ -124,7 +263,7 @@ function Report() {
         </div>
         <button
           style={styles.primaryButton}
-          onClick={fetchReport}
+          onClick={() => fetchReport()}
           disabled={isLoading}
         >
           {isLoading ? 'Loading...' : 'Get Report'}
@@ -258,9 +397,54 @@ const styles = {
     margin: '0 auto',
     fontFamily: 'inherit'
   },
+  headerRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '8px'
+  },
   pageTitle: {
-    margin: '0 0 20px 0',
+    margin: 0,
     fontSize: '1.5rem'
+  },
+  settlementButton: {
+    padding: '10px 20px',
+    backgroundColor: '#dc3545',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+    fontSize: '0.9rem'
+  },
+  settlementButtonDisabled: {
+    backgroundColor: '#999',
+    cursor: 'not-allowed'
+  },
+  settleMessage: {
+    fontSize: '0.9rem',
+    color: '#28a745',
+    marginBottom: '15px'
+  },
+  pettyCashBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    backgroundColor: '#fff8e1',
+    border: '1px solid #ffe082',
+    borderRadius: '6px',
+    padding: '10px 16px',
+    marginBottom: '15px',
+    fontSize: '0.9rem'
+  },
+  pettyCashLabel: {
+    color: '#666',
+    fontWeight: 'bold'
+  },
+  pettyCashAmount: {
+    fontWeight: 'bold',
+    color: '#222',
+    fontSize: '1rem'
   },
   filterBar: {
     display: 'flex',

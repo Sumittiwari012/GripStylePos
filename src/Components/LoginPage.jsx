@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const API_BASE_URL = 'https://dummypossetup.runasp.net';
+const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 function LoginPage({ onLoginSuccess }) {
   const [userId, setUserId] = useState('');
@@ -19,7 +19,7 @@ function LoginPage({ onLoginSuccess }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: Number(userId),
-          counterId: Number(counterId),
+          counterId: counterId === '' ? null : Number(counterId),
           password
         })
       });
@@ -31,7 +31,7 @@ function LoginPage({ onLoginSuccess }) {
         return;
       }
 
-      onLoginSuccess(data.isAdmin);
+      onLoginSuccess(data.isAdmin, counterId, userId);
     } catch (err) {
       console.error('Login error:', err);
       setError('Could not reach the server. Please try again.');
@@ -56,11 +56,10 @@ function LoginPage({ onLoginSuccess }) {
         />
         <input
           type="number"
-          placeholder="Counter ID"
+          placeholder="Counter ID (leave blank for admin)"
           value={counterId}
           onChange={(e) => setCounterId(e.target.value)}
           style={styles.input}
-          required
         />
         <input
           type="password"

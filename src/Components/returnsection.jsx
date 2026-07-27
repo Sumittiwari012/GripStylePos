@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReturnBill from './returnbill';
+import DataTable from './DataTable';
 
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
@@ -20,6 +21,22 @@ const getReturnInvoiceNumber = () => {
   return `GSR${dateStr}${String(newCounter).padStart(4, '0')}`;
 };
 
+const returnListColumns = [
+  { key: 'returnInvoiceNumber', label: 'Return #' },
+  { key: 'originalInvoiceNumber', label: 'Original Invoice' },
+  { key: 'customerName', label: 'Customer' },
+  {
+    key: 'totalAmount',
+    label: 'Refunded',
+    render: (row) => `₹${Number(row.totalAmount).toFixed(2)}`
+  },
+  {
+    key: 'createdDate',
+    label: 'Date',
+    render: (row) => row.createdDate ? new Date(row.createdDate).toLocaleString() : ''
+  }
+];
+
 function ReturnSection() {
   const [invoiceInput, setInvoiceInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,6 +46,19 @@ function ReturnSection() {
   const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [completedReturn, setCompletedReturn] = useState(null);
+
+  // ── OTP gate state ──
+  const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+  const [isRequestingOtp, setIsRequestingOtp] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
+  // Bumped after every successful return submission to force the returns
+  // list (below) to refetch and pick up the new record.
+  const [returnsListVersion, setReturnsListVersion] = useState(0);
+
+  const counterId = localStorage.getItem('counterId');
 
   // Keyed by ProductId. Value = { checked, returnQty, maxQty, ...item }
   const [selectedItems, setSelectedItems] = useState({});
@@ -144,9 +174,97 @@ function ReturnSection() {
     return sum + unitAfterTax * item.returnQty;
   }, 0);
 
+  // ── Step 1: "Submit Return" click → request an OTP, open the verification modal ──
   const handleSubmitReturn = async () => {
     if (selectedList.length === 0) return;
 
+    const itemsToReturn = selectedList.filter((item) => item.returnQty > 0);
+    if (itemsToReturn.length === 0) return;
+
+    if (!counterId) {
+      setSubmitError('Counter ID missing — please log in again.');
+      return;
+    }
+
+    setIsRequestingOtp(true);
+    setSubmitError('');
+    setOtpError('');
+    setOtpInput('');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/OtpChecker/RecordOtp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          counterId: Number(counterId),
+          invoiceNumber: transaction.invoiceNumber
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.message || `Request failed with status ${response.status}`);
+      }
+
+      setIsOtpModalOpen(true);
+    } catch (err) {
+      console.error('OTP request failed:', err);
+      setSubmitError(err.message || 'Could not send OTP. Please try again.');
+    } finally {
+      setIsRequestingOtp(false);
+    }
+  };
+
+  // ── Step 2: "Check" click in the modal → verify OTP, then actually process the return ──
+  const handleVerifyOtp = async () => {
+    const otpValue = otpInput.trim();
+    if (!otpValue) {
+      setOtpError('Please enter the OTP.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    setOtpError('');
+
+    try {
+      const verifyResponse = await fetch(`${API_BASE_URL}/api/OtpChecker/VerifyOtp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          counterId: Number(counterId),
+          otpVal: Number(otpValue),
+          invoiceNumber: transaction.invoiceNumber
+        })
+      });
+
+      const verifyResult = await verifyResponse.json();
+
+      if (!verifyResponse.ok) {
+        setOtpError(verifyResult?.message || 'Invalid OTP. Please try again.');
+        return;
+      }
+
+      // OTP verified — close the modal and actually process the return.
+      setIsOtpModalOpen(false);
+      setOtpInput('');
+      await performReturnSubmission();
+    } catch (err) {
+      console.error('OTP verification failed:', err);
+      setOtpError('Could not reach the server. Please try again.');
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  const handleCancelOtp = () => {
+    setIsOtpModalOpen(false);
+    setOtpInput('');
+    setOtpError('');
+  };
+
+  // ── Step 3: the actual addReturn call, unchanged apart from being gated behind OTP now ──
+  const performReturnSubmission = async () => {
     const itemsToReturn = selectedList.filter((item) => item.returnQty > 0);
     if (itemsToReturn.length === 0) return;
 
@@ -156,6 +274,7 @@ function ReturnSection() {
       phoneNumber: transaction.customerMobile,
       invoiceNumber: transaction.invoiceNumber,
       returnInvoiceNumber,
+      counterId: Number(counterId),
       items: itemsToReturn.map((item) => {
         const unitAfterTax = item.quantity > 0 ? item.afterTaxation / item.quantity : 0;
         return {
@@ -208,10 +327,15 @@ function ReturnSection() {
         completedAt: new Date().toISOString()
       });
 
-      // Return is done - clear the working state so the panel goes back to empty.
+      // Return is done - clear the working state so the panel goes back to empty
+      // (which also moves the returns list back up, since it renders in the
+      // "no transaction loaded" branch below).
       setSelectedItems({});
       setTransaction(null);
       setInvoiceInput('');
+
+      // Pick up the just-created return in the list.
+      setReturnsListVersion((v) => v + 1);
     } catch (err) {
       console.error('Return failed:', err);
       setSubmitError(err.message || 'Return failed. Please try again.');
@@ -219,6 +343,20 @@ function ReturnSection() {
       setIsSubmittingReturn(false);
     }
   };
+
+  const returnsList = counterId ? (
+    <DataTable
+      key={returnsListVersion}
+      buildEndpoint={(fromDate, toDate) =>
+        `${API_BASE_URL}/GetReturn?CounterId=${encodeURIComponent(counterId)}&FromDate=${fromDate}&ToDate=${toDate}`
+      }
+      columns={returnListColumns}
+      title="Today's Returns"
+      emptyMessage="No returns recorded yet."
+    />
+  ) : (
+    <p style={styles.errorText}>Counter ID missing — please log in again to see returns.</p>
+  );
 
   return (
     <div style={styles.wrapper}>
@@ -243,157 +381,210 @@ function ReturnSection() {
         <ReturnBill returnData={completedReturn} onClose={() => setCompletedReturn(null)} />
       )}
 
-      {transaction && (
-        <div style={styles.contentRow}>
-          {/* Left: invoice header + selectable items */}
-          <div style={styles.invoiceColumn}>
-            <div style={styles.invoiceHeader}>
-              <h3 style={styles.invoiceNumber}>Invoice: {transaction.invoiceNumber}</h3>
-              <p style={styles.headerRow}>Customer ID: {transaction.customerId}</p>
-              <p style={styles.headerRow}>Customer: {transaction.customerName}</p>
-              <p style={styles.headerRow}>Mobile: {transaction.customerMobile}</p>
-              <p style={styles.headerRow}>
-                Customer Balance: ₹{Number(transaction.customerBalance).toFixed(2)}
-              </p>
-              <p style={styles.headerRow}>
-                Purchase Date: {new Date(transaction.purchaseDate).toLocaleDateString()}
-              </p>
-              <p style={styles.headerRow}>Total Amount: ₹{Number(transaction.totalAmount).toFixed(2)}</p>
-              {transaction.isReturned && (
-                <p style={styles.alreadyReturnedTag}>This invoice already has a return on record.</p>
-              )}
-            </div>
-
-            <h4 style={styles.itemsHeading}>Items - click to add one unit to the return panel</h4>
-            <div style={styles.itemsList}>
-              {transaction.items.map((item) => {
-                const inPanel = selectedItems[item.productId];
-                const remaining = remainingQtyFor(item);
-                const alreadyReturned = returnedQtyByProduct[item.productId] ?? 0;
-                const atMax = inPanel && inPanel.returnQty >= inPanel.maxQty;
-                const nothingLeft = remaining <= 0;
-                return (
-                  <button
-                    key={item.productId}
-                    type="button"
-                    onClick={() => addItemToReturn(item)}
-                    disabled={atMax || nothingLeft}
-                    style={{
-                      ...styles.itemCard,
-                      ...(inPanel ? styles.itemCardSelected : {}),
-                      ...(atMax || nothingLeft ? styles.itemCardMaxed : {})
-                    }}
-                  >
-                    <div style={styles.itemNameRow}>
-                      <span style={styles.itemName}>{item.productName}</span>
-                      {inPanel && (
-                        <span style={styles.selectedBadge}>
-                          {inPanel.returnQty} / {inPanel.maxQty} added
-                        </span>
-                      )}
-                    </div>
-                    <p style={styles.itemDetail}>Barcode: {item.barcode}</p>
-                    <p style={styles.itemDetail}>Qty Purchased: {item.quantity}</p>
-                    {alreadyReturned > 0 && (
-                      <p style={styles.itemDetail}>
-                        Already Returned: {alreadyReturned} · Remaining: {remaining}
-                      </p>
-                    )}
-                    <p style={styles.itemDetail}>Sale Price: ₹{Number(item.salePrice).toFixed(2)}</p>
-                    <p style={styles.itemDetail}>Line Total: ₹{Number(item.afterTaxation).toFixed(2)}</p>
-                    {nothingLeft && (
-                      <p style={styles.itemFullyReturnedTag}>Fully returned</p>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Right: return panel - previous returns history, then the active return builder */}
-          <div style={styles.rightColumn}>
-            {transaction.returns && transaction.returns.length > 0 && (
-              <div style={styles.pastReturnsBox}>
-                <h4 style={styles.itemsHeading}>Previous Returns</h4>
-                {transaction.returns.map((ret) => (
-                  <div key={ret.returnInvoiceNumber} style={styles.pastReturnCard}>
-                    <div style={styles.pastReturnHeaderRow}>
-                      <span style={styles.pastReturnNumber}>{ret.returnInvoiceNumber}</span>
-                      <span style={styles.pastReturnDate}>
-                        {ret.createdDate ? new Date(ret.createdDate).toLocaleString() : ''}
-                      </span>
-                    </div>
-                    <p style={styles.pastReturnTotal}>
-                      Refunded: ₹{Number(ret.totalAmount).toFixed(2)}
-                    </p>
-                    <ul style={styles.pastReturnItemsList}>
-                      {(ret.items ?? []).map((ri) => (
-                        <li key={`${ret.returnInvoiceNumber}-${ri.productId}`} style={styles.pastReturnItemRow}>
-                          <span>{ri.productName}</span>
-                          <span style={styles.pastReturnItemQty}>x{ri.quantity}</span>
-                          <span>₹{Number(ri.salePrice).toFixed(2)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+      {transaction ? (
+        <>
+          <div style={styles.contentRow}>
+            {/* Left: invoice header + selectable items */}
+            <div style={styles.invoiceColumn}>
+              <div style={styles.invoiceHeader}>
+                <h3 style={styles.invoiceNumber}>Invoice: {transaction.invoiceNumber}</h3>
+                <p style={styles.headerRow}>Customer ID: {transaction.customerId}</p>
+                <p style={styles.headerRow}>Customer: {transaction.customerName}</p>
+                <p style={styles.headerRow}>Mobile: {transaction.customerMobile}</p>
+                <p style={styles.headerRow}>
+                  Customer Balance: ₹{Number(transaction.customerBalance).toFixed(2)}
+                </p>
+                <p style={styles.headerRow}>
+                  Purchase Date: {new Date(transaction.purchaseDate).toLocaleDateString()}
+                </p>
+                <p style={styles.headerRow}>Total Amount: ₹{Number(transaction.totalAmount).toFixed(2)}</p>
+                {transaction.isReturned && (
+                  <p style={styles.alreadyReturnedTag}>This invoice already has a return on record.</p>
+                )}
               </div>
-            )}
 
-            <div style={styles.returnPanel}>
-              <h4 style={styles.returnPanelHeading}>Return Panel</h4>
+              <h4 style={styles.itemsHeading}>Items - click to add one unit to the return panel</h4>
+              <div style={styles.itemsList}>
+                {transaction.items.map((item) => {
+                  const inPanel = selectedItems[item.productId];
+                  const remaining = remainingQtyFor(item);
+                  const alreadyReturned = returnedQtyByProduct[item.productId] ?? 0;
+                  const atMax = inPanel && inPanel.returnQty >= inPanel.maxQty;
+                  const nothingLeft = remaining <= 0;
+                  return (
+                    <button
+                      key={item.productId}
+                      type="button"
+                      onClick={() => addItemToReturn(item)}
+                      disabled={atMax || nothingLeft}
+                      style={{
+                        ...styles.itemCard,
+                        ...(inPanel ? styles.itemCardSelected : {}),
+                        ...(atMax || nothingLeft ? styles.itemCardMaxed : {})
+                      }}
+                    >
+                      <div style={styles.itemNameRow}>
+                        <span style={styles.itemName}>{item.productName}</span>
+                        {inPanel && (
+                          <span style={styles.selectedBadge}>
+                            {inPanel.returnQty} / {inPanel.maxQty} added
+                          </span>
+                        )}
+                      </div>
+                      <p style={styles.itemDetail}>Barcode: {item.barcode}</p>
+                      <p style={styles.itemDetail}>Qty Purchased: {item.quantity}</p>
+                      {alreadyReturned > 0 && (
+                        <p style={styles.itemDetail}>
+                          Already Returned: {alreadyReturned} · Remaining: {remaining}
+                        </p>
+                      )}
+                      <p style={styles.itemDetail}>Sale Price: ₹{Number(item.salePrice).toFixed(2)}</p>
+                      <p style={styles.itemDetail}>Line Total: ₹{Number(item.afterTaxation).toFixed(2)}</p>
+                      {nothingLeft && (
+                        <p style={styles.itemFullyReturnedTag}>Fully returned</p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-            {selectedList.length === 0 ? (
-              <p style={styles.returnEmptyText}>No items selected yet. Click an item on the left.</p>
-            ) : (
-              <>
-                <div style={styles.returnItemsList}>
-                  {selectedList.map((item) => (
-                    <div key={item.productId} style={styles.returnItemRow}>
-                      <div style={styles.returnItemInfo}>
-                        <span style={styles.returnItemName}>{item.productName}</span>
-                        <span style={styles.returnItemBarcode}>{item.barcode}</span>
+            {/* Right: return panel - previous returns history, then the active return builder */}
+            <div style={styles.rightColumn}>
+              {transaction.returns && transaction.returns.length > 0 && (
+                <div style={styles.pastReturnsBox}>
+                  <h4 style={styles.itemsHeading}>Previous Returns</h4>
+                  {transaction.returns.map((ret) => (
+                    <div key={ret.returnInvoiceNumber} style={styles.pastReturnCard}>
+                      <div style={styles.pastReturnHeaderRow}>
+                        <span style={styles.pastReturnNumber}>{ret.returnInvoiceNumber}</span>
+                        <span style={styles.pastReturnDate}>
+                          {ret.createdDate ? new Date(ret.createdDate).toLocaleString() : ''}
+                        </span>
                       </div>
-                      <div style={styles.returnQtyControl}>
-                        <input
-                          type="number"
-                          min={0}
-                          max={item.maxQty}
-                          value={item.returnQty}
-                          onChange={(e) => updateReturnQty(item.productId, e.target.value)}
-                          style={styles.returnQtyInput}
-                        />
-                        <span style={styles.returnQtyMax}>/ {item.maxQty}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeItemFromReturn(item.productId)}
-                        style={styles.removeButton}
-                        aria-label={`Remove ${item.productName} from return`}
-                      >
-                        ✕
-                      </button>
+                      <p style={styles.pastReturnTotal}>
+                        Refunded: ₹{Number(ret.totalAmount).toFixed(2)}
+                      </p>
+                      <ul style={styles.pastReturnItemsList}>
+                        {(ret.items ?? []).map((ri) => (
+                          <li key={`${ret.returnInvoiceNumber}-${ri.productId}`} style={styles.pastReturnItemRow}>
+                            <span>{ri.productName}</span>
+                            <span style={styles.pastReturnItemQty}>x{ri.quantity}</span>
+                            <span>₹{Number(ri.salePrice).toFixed(2)}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   ))}
                 </div>
+              )}
 
-                <div style={styles.returnTotalRow}>
-                  <span>Estimated Refund</span>
-                  <strong>₹{returnTotal.toFixed(2)}</strong>
-                </div>
+              <div style={styles.returnPanel}>
+                <h4 style={styles.returnPanelHeading}>Return Panel</h4>
 
-                {submitError && <p style={styles.errorText}>{submitError}</p>}
+              {selectedList.length === 0 ? (
+                <p style={styles.returnEmptyText}>No items selected yet. Click an item on the left.</p>
+              ) : (
+                <>
+                  <div style={styles.returnItemsList}>
+                    {selectedList.map((item) => (
+                      <div key={item.productId} style={styles.returnItemRow}>
+                        <div style={styles.returnItemInfo}>
+                          <span style={styles.returnItemName}>{item.productName}</span>
+                          <span style={styles.returnItemBarcode}>{item.barcode}</span>
+                        </div>
+                        <div style={styles.returnQtyControl}>
+                          <input
+                            type="number"
+                            min={0}
+                            max={item.maxQty}
+                            value={item.returnQty}
+                            onChange={(e) => updateReturnQty(item.productId, e.target.value)}
+                            style={styles.returnQtyInput}
+                          />
+                          <span style={styles.returnQtyMax}>/ {item.maxQty}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeItemFromReturn(item.productId)}
+                          style={styles.removeButton}
+                          aria-label={`Remove ${item.productName} from return`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
 
-                <button
-                  type="button"
-                  style={{ ...styles.submitButton, opacity: isSubmittingReturn ? 0.7 : 1 }}
-                  onClick={handleSubmitReturn}
-                  disabled={isSubmittingReturn}
-                >
-                  {isSubmittingReturn ? 'Processing...' : 'Submit Return'}
-                </button>
-              </>
-            )}
+                  <div style={styles.returnTotalRow}>
+                    <span>Estimated Refund</span>
+                    <strong>₹{returnTotal.toFixed(2)}</strong>
+                  </div>
+
+                  {submitError && <p style={styles.errorText}>{submitError}</p>}
+
+                  <button
+                    type="button"
+                    style={{ ...styles.submitButton, opacity: (isSubmittingReturn || isRequestingOtp) ? 0.7 : 1 }}
+                    onClick={handleSubmitReturn}
+                    disabled={isSubmittingReturn || isRequestingOtp}
+                  >
+                    {isRequestingOtp ? 'Sending OTP...' : isSubmittingReturn ? 'Processing...' : 'Submit Return'}
+                  </button>
+                </>
+              )}
+              </div>
+            </div>
+          </div>
+
+          {/* Invoice is loaded → list pushed below the transaction/return-panel content */}
+          <div style={styles.returnsListSection}>
+            {returnsList}
+          </div>
+        </>
+      ) : (
+        // No transaction loaded → list sits right under the search bar
+        <div style={styles.returnsListSection}>
+          {returnsList}
+        </div>
+      )}
+
+      {/* ── OTP verification modal ── */}
+      {isOtpModalOpen && (
+        <div style={styles.otpOverlay}>
+          <div style={styles.otpBox}>
+            <h3 style={styles.otpTitle}>Enter OTP</h3>
+            <p style={styles.otpSubtext}>
+              An OTP has been sent to {transaction?.customerMobile} to confirm this return.
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={4}
+              value={otpInput}
+              onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+              placeholder="4-digit OTP"
+              autoFocus
+              style={styles.otpInput}
+            />
+            {otpError && <p style={styles.errorText}>{otpError}</p>}
+            <div style={styles.otpButtonRow}>
+              <button
+                type="button"
+                onClick={handleCancelOtp}
+                style={styles.otpCancelButton}
+                disabled={isVerifyingOtp || isSubmittingReturn}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleVerifyOtp}
+                style={{ ...styles.otpCheckButton, opacity: (isVerifyingOtp || isSubmittingReturn) ? 0.7 : 1 }}
+                disabled={isVerifyingOtp || isSubmittingReturn}
+              >
+                {isVerifyingOtp ? 'Checking...' : isSubmittingReturn ? 'Processing...' : 'Check'}
+              </button>
             </div>
           </div>
         </div>
@@ -434,6 +625,9 @@ const styles = {
   },
   errorText: {
     color: '#dc3545'
+  },
+  returnsListSection: {
+    marginTop: '24px'
   },
   contentRow: {
     display: 'flex',
@@ -663,6 +857,69 @@ const styles = {
     cursor: 'pointer',
     fontWeight: 'bold',
     fontSize: '1rem'
+  },
+  otpOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999
+  },
+  otpBox: {
+    backgroundColor: '#fff',
+    padding: '2rem',
+    borderRadius: '10px',
+    minWidth: '320px',
+    maxWidth: '360px',
+    boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
+  },
+  otpTitle: {
+    margin: '0 0 8px 0'
+  },
+  otpSubtext: {
+    margin: '0 0 16px 0',
+    fontSize: '0.85rem',
+    color: '#555'
+  },
+  otpInput: {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: '6px',
+    border: '1px solid #ccc',
+    fontSize: '18px',
+    letterSpacing: '4px',
+    textAlign: 'center',
+    boxSizing: 'border-box',
+    outline: 'none'
+  },
+  otpButtonRow: {
+    display: 'flex',
+    gap: '10px',
+    marginTop: '16px'
+  },
+  otpCancelButton: {
+    flex: 1,
+    padding: '10px',
+    borderRadius: '6px',
+    border: '1px solid #ccc',
+    backgroundColor: '#fff',
+    cursor: 'pointer',
+    fontWeight: 'bold'
+  },
+  otpCheckButton: {
+    flex: 1,
+    padding: '10px',
+    borderRadius: '6px',
+    border: 'none',
+    backgroundColor: '#2C6B4B',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 'bold'
   }
 };
 

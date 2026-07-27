@@ -4,6 +4,8 @@ import DataTable from './DataTable';
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 function PaymentList() {
+  const counterId = localStorage.getItem('counterId');
+
   const columns = [
     { key: 'invoiceNumber', label: 'Invoice #' },
     { key: 'customerName', label: 'Customer' },
@@ -20,9 +22,15 @@ function PaymentList() {
     }
   ];
 
+  if (!counterId) {
+    return <p style={{ color: '#dc3545' }}>Counter ID missing — please log in again.</p>;
+  }
+
   return (
     <DataTable
-      endpoint={`${API_BASE_URL}/getPayments`}
+      buildEndpoint={(fromDate, toDate) =>
+        `${API_BASE_URL}/getPayments?CounterId=${encodeURIComponent(counterId)}&FromDate=${fromDate}&ToDate=${toDate}`
+      }
       columns={columns}
       title="Payments"
       emptyMessage="No payments found."

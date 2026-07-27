@@ -4,6 +4,8 @@ import DataTable from './DataTable';
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 function PurchaseDetailList() {
+  const counterId = localStorage.getItem('counterId');
+
   const columns = [
     { key: 'invoiceNumber', label: 'Invoice #' },
     { key: 'productName', label: 'Product' },
@@ -21,9 +23,15 @@ function PurchaseDetailList() {
     }
   ];
 
+  if (!counterId) {
+    return <p style={{ color: '#dc3545' }}>Counter ID missing — please log in again.</p>;
+  }
+
   return (
     <DataTable
-      endpoint={`${API_BASE_URL}/getPurchaseDetails`}
+      buildEndpoint={(fromDate, toDate) =>
+        `${API_BASE_URL}/getPurchaseDetails?CounterId=${encodeURIComponent(counterId)}&FromDate=${fromDate}&ToDate=${toDate}`
+      }
       columns={columns}
       title="Invoice Detail"
       emptyMessage="No invoice line items found."

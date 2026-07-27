@@ -5,19 +5,81 @@ import Payment from './payment';
 import InvoiceBill from './invoiceBill';
 
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
+const WA_SERVICE_URL = 'http://localhost:4001'; // change to your Baileys service URL once deployed
+const WA_API_KEY = 'your-long-random-secret';
 
+// Builds a plain-text invoice summary to send over WhatsApp instead of a URL.
+const buildInvoiceMessageText = ({
+  invoiceNumber,
+  customerName,
+  items = [],
+  totalAmount = 0,
+  discount = 0,
+  taxAmount = 0,
+  payableAmount = 0
+}) => {
+  const itemLines = items
+    .map((item) => `- ${item.name} x${item.quantity} - Rs.${(item.price * item.quantity).toFixed(2)}`)
+    .join('\n');
+
+  return [
+    `Invoice: ${invoiceNumber}`,
+    customerName ? `Customer: ${customerName}` : null,
+    '',
+    itemLines,
+    '',
+    `Total: Rs.${totalAmount.toFixed(2)}`,
+    discount > 0 ? `Discount: Rs.${discount.toFixed(2)}` : null,
+    `Tax: Rs.${taxAmount.toFixed(2)}`,
+    `Payable: Rs.${payableAmount.toFixed(2)}`,
+    '',
+    'Thank you for your business!'
+  ]
+    .filter(Boolean)
+    .join('\n');
+};
+
+const sendInvoiceViaWhatsApp = async ({ phoneNumber, invoiceNumber, customerName, message }) => {
+  if (!phoneNumber || !message) {
+    console.warn('Skipping WhatsApp send: missing phone number or message');
+    return;
+  }
+  try {
+    const res = await fetch(`${WA_SERVICE_URL}/send-text`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': WA_API_KEY
+      },
+      body: JSON.stringify({ phoneNumber, invoiceNumber, customerName, message })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      console.error('WhatsApp send failed:', data.message);
+    } else {
+      console.log('✅ Invoice sent via WhatsApp');
+    }
+  } catch (err) {
+    console.error('WhatsApp send error (non-blocking):', err);
+  }
+};
 const getInvoiceNumber = () => {
   const today = new Date();
   const dd = String(today.getDate()).padStart(2, '0');
   const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const yyyy = today.getFullYear();
-  const dateStr = `${dd}${mm}${yyyy}`;
+  const yy = String(today.getFullYear()).slice(-2); // 2-digit year (26 instead of 2026)
+
+  const dateStr = `${dd}${mm}${yy}`;
+
+  const counterId = localStorage.getItem('counterId') || '0';
 
   const storedCounter = parseInt(localStorage.getItem('invoiceCounter') || '0', 10);
   const newCounter = storedCounter + 1;
   localStorage.setItem('invoiceCounter', newCounter.toString());
 
-  return `GS${dateStr}${String(newCounter).padStart(4, '0')}`;
+  const seqStr = String(newCounter).padStart(4, '0');
+
+  return `GSC${counterId}${dateStr}${seqStr}`;
 };
 
 function BillingSection({ products = [], cart = [], setCart }) {
@@ -173,12 +235,22 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setIsSubmittingTransaction(true);
     setTransactionError('');
 
+    // ── Pull the logged-in counter's ID from localStorage (set at login) ──
+    const counterId = localStorage.getItem('counterId');
+
+    if (!counterId) {
+      setTransactionError('Counter ID missing — please log in again before completing the sale.');
+      setIsSubmittingTransaction(false);
+      return;
+    }
+
     const payload = {
       phoneNumber: selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber,
       invoiceNumber,
       totalAmount,
       discount: safeDiscount,
       payableAmount,
+      counterId: Number(counterId),
       items: cart.map((item) => ({
         productId: item.id,
         quantity: item.quantity,
@@ -199,13 +271,28 @@ function BillingSection({ products = [], cart = [], setCart }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
+      
       const result = await response.json();
 
       if (!response.ok) {
         throw new Error(result?.message || `Request failed with status ${response.status}`);
       }
-
+      const customerName = selectedCustomer?.customerName ?? selectedCustomer?.name;
+      const invoiceMessage = buildInvoiceMessageText({
+        invoiceNumber,
+        customerName,
+        items: cart,
+        totalAmount,
+        discount: safeDiscount,
+        taxAmount,
+        payableAmount
+      });
+      sendInvoiceViaWhatsApp({
+        phoneNumber: payload.phoneNumber,
+        invoiceNumber,
+        customerName,
+        message: invoiceMessage
+      });
       // ── Success: prepare receipt data before clearing state ──
       console.log("Cart before printing:", cart);
       setCompletedInvoice({
@@ -401,6 +488,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
   invoiceNumber={invoiceNumber}
   payableAmount={payableAmount}
   walletBalance={Number(selectedCustomer?.currentBalance ?? selectedCustomer?.walletValue ?? 0)}
+  customerPhone={selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber}
   existingPayments={currentPayments}
   onUpdatePayments={handleUpdatePayments}
   onComplete={handlePaymentComplete}

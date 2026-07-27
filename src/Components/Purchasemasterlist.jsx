@@ -4,8 +4,19 @@ import InvoiceBill from './invoiceBill';
 
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
+const toDateParam = (date) => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 function PurchaseMasterList() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+
+  // ── Counter ID from the logged-in session ──
+  const counterId = localStorage.getItem('counterId');
+  const today = toDateParam(new Date());
 
   const handlePrint = async (invoiceNumber) => {
     try {
@@ -31,8 +42,7 @@ function PurchaseMasterList() {
           quantity: item.quantity,
           price: item.salePrice,
           cgst: item.cgst ?? 0,
-          // Added the HSN mapping here:
-          hsnCode: item.hsnCode ?? item.hsn ?? item.HSNCode ?? '-' 
+          hsnCode: item.hsnCode ?? item.hsn ?? item.HSNCode ?? '-'
         })),
         totalAmount: data.totalAmount,
         discount: data.discount,
@@ -54,10 +64,7 @@ function PurchaseMasterList() {
   };
 
   const columns = [
-    {
-      key: 'invoiceNumber',
-      label: 'Invoice'
-    },
+    { key: 'invoiceNumber', label: 'Invoice' },
     {
       key: 'customerName',
       label: 'Customer',
@@ -77,26 +84,22 @@ function PurchaseMasterList() {
     {
       key: 'purchaseDate',
       label: 'Date',
-      render: row =>
-        new Date(row.purchaseDate).toLocaleDateString()
+      render: row => new Date(row.purchaseDate).toLocaleDateString()
     },
     {
       key: 'totalAmount',
       label: 'Total',
-      render: row =>
-        `₹${Number(row.totalAmount).toFixed(0)}`
+      render: row => `₹${Number(row.totalAmount).toFixed(0)}`
     },
     {
       key: 'discount',
       label: 'Disc',
-      render: row =>
-        `₹${Number(row.discount).toFixed(0)}`
+      render: row => `₹${Number(row.discount).toFixed(0)}`
     },
     {
       key: 'isReturned',
       label: 'Ret',
-      render: row =>
-        row.isReturned ? 'Y' : 'N'
+      render: row => row.isReturned ? 'Y' : 'N'
     },
     {
       key: 'print',
@@ -120,10 +123,17 @@ function PurchaseMasterList() {
     }
   ];
 
+  // ── Guard: don't hit the API without a CounterId, it's a required param now ──
+  if (!counterId) {
+    return <p style={{ color: '#dc3545' }}>Counter ID missing — please log in again.</p>;
+  }
+
   return (
     <>
       <DataTable
-        endpoint={`${API_BASE_URL}/getPurchaseMaster`}
+        buildEndpoint={(fromDate, toDate) =>
+  `${API_BASE_URL}/getPurchaseMaster?CounterId=${encodeURIComponent(counterId)}&FromDate=${fromDate}&ToDate=${toDate}`
+}
         columns={columns}
         title="Invoices"
         emptyMessage="No invoices found."

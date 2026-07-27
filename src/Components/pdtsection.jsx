@@ -3,9 +3,11 @@ import BillingSection from './billingSection';
 import PurchaseMasterList from './Purchasemasterlist';
 import PurchaseDetailList from './Purchasedetaillist';
 import PaymentList from './Paymentlist';
-import CustomerList from './Customerlist';
 import ReturnSection from './returnsection';
 import Report from './report';
+import LoginPage from './LoginPage';
+import PettyCashCheck from './PettyCashCheck';
+import Admin from './Admin';
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 function Pdtsection() {
@@ -51,13 +53,107 @@ const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
   const [unlockError, setUnlockError] = useState('');
   const FREEZE_PASSWORD = '1234';
 
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+
+const [pettyCashAccepted, setPettyCashAccepted] = useState(false);
+const [isLoggedIn, setIsLoggedIn] = useState(() => {
+  return localStorage.getItem('isLoggedIn') === 'true';
+});
+const [isAdmin, setIsAdmin] = useState(() => {
+  return localStorage.getItem('isAdmin') === 'true';
+});
+const [counterId, setCounterId] = useState(() => {
+  return localStorage.getItem('counterId') || '';
+});
+const [userId, setUserId] = useState(() => {
+  return localStorage.getItem('userId') || '';
+});
+
+const handleLoginSuccess = (adminFlag, cid, uid) => {
+  setIsAdmin(adminFlag);
+  setCounterId(cid);
+  setUserId(uid);
+  setIsLoggedIn(true);
+  localStorage.setItem('isLoggedIn', 'true');
+  localStorage.setItem('isAdmin', String(adminFlag));
+  localStorage.setItem('counterId', cid || '');
+  localStorage.setItem('userId', uid || '');
+};
+
+  // ── Logout state ────────────────────────────────────────
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
+  const [settlementPending, setSettlementPending] = useState(false);
+
+  const clearSession = () => {
+    setIsLoggedIn(false);
+    setIsAdmin(false);
+    setCounterId('');
+    setUserId('');
+    setPettyCashAccepted(false);
+    setLogoutError('');
+    setSettlementPending(false);
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('isAdmin');
+    localStorage.removeItem('counterId');
+    localStorage.removeItem('userId');
+  };
+
+  const handleAuthToggle = async () => {
+    setLogoutError('');
+    setSettlementPending(false);
+
+    // Admins have no MLoginLogout record on the backend, so just clear locally
+    if (isAdmin) {
+      clearSession();
+      return;
+    }
+
+    setLoggingOut(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/Auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: Number(userId),
+          counterId: Number(counterId)
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const msg = data.message || 'Logout failed. Please try again.';
+        if (msg.toLowerCase().includes('settlement')) {
+          setSettlementPending(true);
+        }
+        setLogoutError(msg);
+        return;
+      }
+
+      clearSession();
+    } catch (err) {
+      console.error('Logout error:', err);
+      setLogoutError('Could not reach the server. Please try again.');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   // ── Product data from API ──────────────────────────────
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
+// ── Logout state ────────────────────────────────────────
 
+
+useEffect(() => {
+  if (!settlementPending) return;
+  const timer = setTimeout(() => {
+    setSettlementPending(false);
+    setLogoutError('');
+  }, 5000);
+  return () => clearTimeout(timer);
+}, [settlementPending]);
   useEffect(() => {
     const fetchProducts = async () => {
       setLoading(true);
@@ -103,17 +199,27 @@ const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
     }
   };
 
-  const handleAuthToggle = () => {
-    setIsLoggedIn((prev) => !prev);
-  };
-
   const handleNavClick = (view) => (e) => {
     e.preventDefault();
     setActiveView(view);
   };
-
+if (!isLoggedIn) {
+  return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+}
+if (!isAdmin && !pettyCashAccepted) {
   return (
+    <PettyCashCheck
+      counterId={counterId}
+      userId={userId}
+      onAccepted={() => setPettyCashAccepted(true)}
+      onDenied={clearSession}
+    />
+  );
+}
+  return (
+
     <>
+
       <div className="product-section-wrapper">
         <nav className="product-nav" style={styles.navbar}>
           <ul style={styles.navLinks}>
@@ -165,40 +271,51 @@ const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
                 Payment
               </a>
             </li>
-            <li>
-              <a
-                href="#customers"
-                onClick={handleNavClick('customers')}
-                style={{
-                  ...styles.link,
-                  ...(activeView === 'customers' ? styles.activeLink : {})
-                }}
-              >
-                Customers
-              </a>
-            </li>
+            
             <li><a href="#returns"
   onClick={handleNavClick('returns')}
   style={{ ...styles.link, ...(activeView === 'returns' ? styles.activeLink : {}) }}
 >Returns</a></li>
-           
+
           <li><a href="#report"
   onClick={handleNavClick('report')}
   style={{ ...styles.link, ...(activeView === 'report' ? styles.activeLink : {}) }}
 >Report</a></li>
+            {isAdmin && (
+              <li>
+                <a
+                  href="#admin"
+                  onClick={handleNavClick('admin')}
+                  style={{
+                    ...styles.link,
+                    ...(activeView === 'admin' ? styles.activeLink : {})
+                  }}
+                >
+                  Admin
+                </a>
+              </li>
+            )}
             <li>
               <button onClick={handleFreeze} style={styles.navButton}>
                 Freeze
               </button>
             </li>
             <li>
-              <button onClick={handleAuthToggle} style={styles.navButton}>
-                {isLoggedIn ? 'Logout' : 'Login'}
+              <button onClick={handleAuthToggle} style={styles.navButton} disabled={loggingOut}>
+                {loggingOut ? 'Logging out...' : 'Logout'}
               </button>
             </li>
           </ul>
         </nav>
 
+       {settlementPending && (
+  <p style={styles.settlementWarning}>
+    Settlement pending — please complete today's settlement before logging out.
+  </p>
+)}
+{logoutError && !settlementPending && (
+  <p style={styles.settlementWarning}>{logoutError}</p>
+)}
         {activeView === 'invoices' ? (
           <main className="invoice-display" style={styles.mainContent}>
             <PurchaseMasterList />
@@ -211,10 +328,7 @@ const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
           <main className="payment-display" style={styles.mainContent}>
             <PaymentList />
           </main>
-        ) : activeView === 'customers' ? (
-          <main className="customers-display" style={styles.mainContent}>
-            <CustomerList />
-          </main>
+        
         ) : activeView === 'returns' ? (
   <main className="returns-display" style={styles.mainContent}>
     <ReturnSection />
@@ -222,6 +336,10 @@ const hsn = product.HSNCode ?? product.hsnCode ?? product.hsn ?? '-';
      ) : activeView === 'report' ? (
   <main className="report-display" style={styles.mainContent}>
     <Report />
+  </main>
+  ) : activeView === 'admin' ? (
+  <main className="admin-display" style={styles.mainContent}>
+    <Admin />
   </main>
         ) : (
           <main className="product-display" style={styles.mainContent}>
@@ -315,7 +433,7 @@ const styles = {
     maxWidth: '100%',      // ← prevents overflow on small screens
           // ← centers it, matching mainContent
     display: 'flex',
-    justifyContent: 'flex-start', 
+    justifyContent: 'flex-start',
     padding: '1rem 2rem',
     backgroundColor: '#333',
     color: '#fff',
@@ -323,7 +441,7 @@ const styles = {
     borderRadius: '8px',
     position: 'sticky',    // ← stays in place while scrolling
     top: 0,                 // ← sticks to the top of the viewport
-    zIndex: 1000 
+    zIndex: 1000
   },
   navLinks: {
     listStyleType: 'none',
@@ -357,6 +475,15 @@ const styles = {
     padding: '2rem',
     maxWidth: '900px',
           // ← added: centers mainContent to match navbar
+  },
+  settlementWarning: {
+    color: '#dc3545',
+    backgroundColor: '#fdecea',
+    padding: '8px 16px',
+    margin: '0',
+    fontSize: '0.9rem',
+    fontWeight: 'bold',
+    textAlign: 'center'
   },
   // ...rest unchanged
   searchContainer: {
