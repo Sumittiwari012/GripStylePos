@@ -57,16 +57,29 @@ function Report() {
         setCheckingStatus(false);
         return;
       }
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/SettlementRequest/status/${counterId}`);
-        if (!response.ok) return;
-        const data = await response.json();
-        setSettled(Boolean(data.settled));
-      } catch (err) {
-        console.error('Settlement status check error:', err);
-      } finally {
-        setCheckingStatus(false);
-      }
+     try {
+    console.log("Calling settlement API");
+
+    const response = await fetch(
+        `${API_BASE_URL}/api/SettlementRequest/status/${counterId}`
+    );
+
+    console.log("Response", response.status);
+
+    if (!response.ok) {
+        return;
+    }
+
+    const data = await response.json();
+    console.log("Settlement Status Response:", data);
+
+    // Your API returns { pending: true }
+    setSettled(data.pending === true);
+} catch (e) {
+    console.error(e);
+} finally {
+    setCheckingStatus(false);
+}
     };
 
     checkSettlementStatus();
