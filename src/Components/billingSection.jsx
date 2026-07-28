@@ -63,23 +63,46 @@ const sendInvoiceViaWhatsApp = async ({ phoneNumber, invoiceNumber, customerName
     console.error('WhatsApp send error (non-blocking):', err);
   }
 };
-const getInvoiceNumber = () => {
+
+// ── Invoice numbering ──────────────────────────────────────────────────
+// Split into "peek" (safe to call repeatedly, doesn't spend anything) and
+// "commit" (actually spends the number — only call once the sale is
+// CONFIRMED successful on the backend). This prevents gaps caused by
+// abandoned carts or failed API calls, and resets the sequence each new
+// calendar day.
+
+// Shows what the next invoice number WOULD be, without persisting anything.
+const peekInvoiceNumber = () => {
   const today = new Date();
   const dd = String(today.getDate()).padStart(2, '0');
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const yy = String(today.getFullYear()).slice(-2); // 2-digit year (26 instead of 2026)
-
   const dateStr = `${dd}${mm}${yy}`;
 
   const counterId = localStorage.getItem('counterId') || '0';
 
+  const storedDate = localStorage.getItem('invoiceCounterDate');
   const storedCounter = parseInt(localStorage.getItem('invoiceCounter') || '0', 10);
-  const newCounter = storedCounter + 1;
-  localStorage.setItem('invoiceCounter', newCounter.toString());
 
-  const seqStr = String(newCounter).padStart(4, '0');
+  // New day (or first run ever) → sequence restarts at 1 instead of
+  // continuing from wherever the previous day left off.
+  const baseCounter = storedDate === dateStr ? storedCounter : 0;
+  const nextCounter = baseCounter + 1;
+  const seqStr = String(nextCounter).padStart(4, '0');
 
-  return `GSC${counterId}${dateStr}${seqStr}`;
+  return {
+    invoiceNumber: `GSC${counterId}${dateStr}${seqStr}`,
+    dateStr,
+    nextCounter
+  };
+};
+
+// Actually spends the number. Call ONLY after the sale has been confirmed
+// successful by the backend — if the API call fails, this never runs, so
+// the number is not burned and the next attempt will peek the same one.
+const commitInvoiceNumber = (dateStr, nextCounter) => {
+  localStorage.setItem('invoiceCounterDate', dateStr);
+  localStorage.setItem('invoiceCounter', nextCounter.toString());
 };
 
 function BillingSection({ products = [], cart = [], setCart }) {
@@ -117,9 +140,12 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setDiscountByInvoice((prev) => ({ ...prev, [invoiceNumber]: value }));
   };
 
+  // Display-only — peeks the next number, doesn't spend it. If the sale is
+  // never completed, no number is lost.
   const handleCustomerAdded = (customer) => {
     setSelectedCustomer(customer);
-    setInvoiceNumber(getInvoiceNumber());
+    const { invoiceNumber: nextInvoiceNumber } = peekInvoiceNumber();
+    setInvoiceNumber(nextInvoiceNumber);
     setIsCustomerWindowOpen(false);
     focusSearchInput();
   };
@@ -143,15 +169,18 @@ function BillingSection({ products = [], cart = [], setCart }) {
     alert(`Quotation ${invoiceNumber} saved.`);
   };
 
+  // Re-peek a fresh number rather than trusting the one stored on the
+  // quotation — other sales may have completed since it was saved.
   const handleLoadQuotation = (quotation) => {
-    setInvoiceNumber(quotation.invoiceNumber);
+    const { invoiceNumber: freshInvoiceNumber } = peekInvoiceNumber();
+    setInvoiceNumber(freshInvoiceNumber);
     setSelectedCustomer(quotation.customer ?? null);
     setCart(quotation.cart ?? []);
     if (quotation.discount !== undefined) {
-      setDiscountByInvoice((prev) => ({ ...prev, [quotation.invoiceNumber]: quotation.discount }));
+      setDiscountByInvoice((prev) => ({ ...prev, [freshInvoiceNumber]: quotation.discount }));
     }
     if (quotation.payments?.length) {
-      setPaymentsByInvoice((prev) => ({ ...prev, [quotation.invoiceNumber]: quotation.payments }));
+      setPaymentsByInvoice((prev) => ({ ...prev, [freshInvoiceNumber]: quotation.payments }));
     }
     setIsQuotationListOpen(false);
     focusSearchInput();
@@ -244,9 +273,13 @@ function BillingSection({ products = [], cart = [], setCart }) {
       return;
     }
 
+    // Peek a fresh number right before submitting, so we use the true next
+    // number even if some time has passed since the customer/cart was set up.
+    const { invoiceNumber: finalInvoiceNumber, dateStr, nextCounter } = peekInvoiceNumber();
+
     const payload = {
       phoneNumber: selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber,
-      invoiceNumber,
+      invoiceNumber: finalInvoiceNumber,
       totalAmount,
       discount: safeDiscount,
       payableAmount,
@@ -277,9 +310,13 @@ function BillingSection({ products = [], cart = [], setCart }) {
       if (!response.ok) {
         throw new Error(result?.message || `Request failed with status ${response.status}`);
       }
+
+      // ── Success confirmed by the backend — NOW it's safe to spend the number ──
+      commitInvoiceNumber(dateStr, nextCounter);
+
       const customerName = selectedCustomer?.customerName ?? selectedCustomer?.name;
       const invoiceMessage = buildInvoiceMessageText({
-        invoiceNumber,
+        invoiceNumber: finalInvoiceNumber,
         customerName,
         items: cart,
         totalAmount,
@@ -289,14 +326,14 @@ function BillingSection({ products = [], cart = [], setCart }) {
       });
       sendInvoiceViaWhatsApp({
         phoneNumber: payload.phoneNumber,
-        invoiceNumber,
+        invoiceNumber: finalInvoiceNumber,
         customerName,
         message: invoiceMessage
       });
       // ── Success: prepare receipt data before clearing state ──
       console.log("Cart before printing:", cart);
       setCompletedInvoice({
-        invoiceNumber,
+        invoiceNumber: finalInvoiceNumber,
         customer: selectedCustomer,
         cart,
         totalAmount,
@@ -329,6 +366,9 @@ function BillingSection({ products = [], cart = [], setCart }) {
     } catch (err) {
       console.error('Transaction failed:', err);
       setTransactionError(err.message || 'Transaction failed. Please try again.');
+      // No commitInvoiceNumber() call here — the number is NOT spent, so the
+      // next retry (or the very next customer) will peek this same number
+      // again instead of skipping past it.
     } finally {
       setIsSubmittingTransaction(false);
     }
