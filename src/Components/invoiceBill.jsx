@@ -198,7 +198,7 @@ function InvoiceBill({ invoice, onClose }) {
           <div style={styles.legalBlock}>
             <p style={styles.legalRow}>Place Of Supply: Baranagar, Kolkata, West Bengal - 700036</p>
             <p style={styles.legalRow}>GSTIN NO: 19AAUCM4631Q1ZH</p>
-            <p style={styles.legalRow}>CIN: L24240MH1952PLC008951</p>
+            <p style={styles.legalRow}>CIN: U47711WB2026PTC286757</p>
           </div>
 
           <h2 style={styles.taxInvoiceTitle}>TAX INVOICE</h2>
