@@ -444,21 +444,21 @@ function Admin() {
                 <span style={styles.colAction}>Status</span>
               </div>
               {pettyCashRangeResults.map((p) => (
-                <div key={p.id} style={styles.tableRow}>
-                  <span style={styles.colCounter}>#{p.counterId}</span>
-                  <span style={styles.colTime}>
-                    {new Date(p.createdDate).toLocaleDateString()}
-                  </span>
-                  <span style={styles.colTime}>₹{Number(p.pettyCash).toFixed(2)}</span>
-                  <span style={styles.colAction}>
-                    {p.accepted ? (
-                      <span style={styles.acceptedBadge}>Accepted</span>
-                    ) : (
-                      <span style={styles.pendingBadge}>Pending</span>
-                    )}
-                  </span>
-                </div>
-              ))}
+  <div key={p.id} style={styles.tableRow}>
+    <span style={styles.colCounter}>#{p.counterId}</span>
+    <span style={styles.colTime}>
+      {new Date(p.date).toLocaleDateString()}
+    </span>
+    <span style={styles.colTime}>₹{Number(p.pettyCash).toFixed(2)}</span>
+    <span style={styles.colAction}>
+      {p.accepted ? (
+        <span style={styles.acceptedBadge}>Accepted</span>
+      ) : (
+        <span style={styles.pendingBadge}>Pending</span>
+      )}
+    </span>
+  </div>
+))}
             </div>
           )}
         </div>
