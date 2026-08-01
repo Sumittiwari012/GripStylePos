@@ -21,8 +21,8 @@ function PurchaseMasterList() {
   const handlePrint = async (invoiceNumber) => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/getTransactionDetails/${encodeURIComponent(invoiceNumber)}`
-      );
+  `${API_BASE_URL}/getTransactionDetails?invoiceNumber=${encodeURIComponent(invoiceNumber)}`
+);
 
       if (!response.ok) {
         throw new Error("Unable to load invoice");
