@@ -76,9 +76,9 @@ function ReturnSection() {
     setCompletedReturn(null);
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/getTransactionDetails/${encodeURIComponent(invoiceNumber)}`
-      );
+     const response = await fetch(
+  `${API_BASE_URL}/getTransactionDetails?invoiceNumber=${encodeURIComponent(invoiceNumber)}`
+);
 
       if (response.status === 404) {
         setFetchError('No transaction found with this invoice number.');
