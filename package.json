@@ -15,8 +15,10 @@
     "react": "^19.2.7",
     "react-barcode": "^1.6.1",
     "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.2",
     "rechart": "^0.0.1",
-    "recharts": "^3.9.2"
+    "recharts": "^3.9.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
