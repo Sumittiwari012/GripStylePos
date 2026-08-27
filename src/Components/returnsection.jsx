@@ -4,38 +4,91 @@ import DataTable from './DataTable';
 
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
-// Same date+counter scheme as BillingSection's getInvoiceNumber, but with its
-// own counter key so return numbers and sale numbers don't collide, and "GSR"
-// instead of "GS" as the prefix.
-const getReturnInvoiceNumber = () => {
+// The real prefix in use (per production data) is "GSRC1", not "GSR1".
+const RETURN_INVOICE_PREFIX_FALLBACK = 'GSRC1';
+
+// Builds today's return invoice number off the *last* one on record, fetched
+// from the backend (GetLastReturnInvoiceNumber) rather than a localStorage
+// counter — localStorage is per-browser/per-counter and can't stay in sync
+// with what other counters have already issued, and a backend value can't
+// be reset by clearing site data.
+//
+// Expected shape of the value the API returns: "<PREFIX>-<DDMMYYYY>/<NNNN>",
+// e.g. "GSRC1-22082026/0007" — same "prefix-date/counter" scheme the sale
+// invoice numbers use (see BillingSection's getInvoiceNumber). We keep the
+// prefix as-is, swap the date segment for *today's* date, and increment
+// whatever comes after the "/". If there's no previous return yet (API
+// returns null/empty) or the value doesn't match the expected shape, we
+// fall back to a fresh "GSRC1-<today>/0001".
+const getReturnInvoiceNumber = async () => {
   const today = new Date();
   const dd = String(today.getDate()).padStart(2, '0');
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const yyyy = today.getFullYear();
   const dateStr = `${dd}${mm}${yyyy}`;
+  const fallback = `${RETURN_INVOICE_PREFIX_FALLBACK}-${dateStr}/0001`;
 
-  const storedCounter = parseInt(localStorage.getItem('returnInvoiceCounter') || '0', 10);
-  const newCounter = storedCounter + 1;
-  localStorage.setItem('returnInvoiceCounter', newCounter.toString());
+  try {
+    const response = await fetch(`${API_BASE_URL}/getLastReturnInvoiceNumber`);
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
 
-  return `GSR${dateStr}${String(newCounter).padStart(4, '0')}`;
-};
+    // The endpoint returns a bare string body, NOT JSON (calling .json() on
+    // it throws "Unexpected token ... is not valid JSON"). Read it as text.
+    const rawText = (await response.text()).trim();
+    console.log('getLastReturnInvoiceNumber raw response:', rawText); // TEMP: verify what the backend actually sent
 
-const returnListColumns = [
-  { key: 'returnInvoiceNumber', label: 'Return #' },
-  { key: 'originalInvoiceNumber', label: 'Original Invoice' },
-  { key: 'customerName', label: 'Customer' },
-  {
-    key: 'totalAmount',
-    label: 'Refunded',
-    render: (row) => `₹${Number(row.totalAmount).toFixed(2)}`
-  },
-  {
-    key: 'createdDate',
-    label: 'Date',
-    render: (row) => row.createdDate ? new Date(row.createdDate).toLocaleString() : ''
+    // Defensive: if the backend ever does start returning a real JSON string
+    // (wrapped in quotes) or a JSON object, handle those shapes too instead
+    // of just falling back.
+    let lastReturnInvoiceNumber = rawText;
+    if (rawText.startsWith('"') || rawText.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(rawText);
+        lastReturnInvoiceNumber =
+          typeof parsed === 'string'
+            ? parsed
+            : parsed?.returnInvoiceNumber ?? parsed?.lastReturnInvoiceNumber ?? parsed?.data ?? parsed?.value ?? null;
+      } catch {
+        // not actually JSON despite the leading quote/brace — keep rawText as-is
+      }
+    }
+
+    if (!lastReturnInvoiceNumber || typeof lastReturnInvoiceNumber !== 'string') {
+      console.warn('Unexpected /getLastReturnInvoiceNumber payload shape, using fallback:', rawText);
+      return fallback;
+    }
+
+    // Split "<prefix>-<date>/<counter>" on the last "/" to isolate the
+    // counter, then split what's left on the last "-" to isolate the prefix
+    // from the (old) date segment.
+    const slashIndex = lastReturnInvoiceNumber.lastIndexOf('/');
+    if (slashIndex === -1) {
+      console.warn(
+        `Unexpected return invoice number format ("${lastReturnInvoiceNumber}") — no "/" found. Falling back to a fresh number.`
+      );
+      return fallback;
+    }
+
+    const prefixAndDate = lastReturnInvoiceNumber.slice(0, slashIndex);
+    const counterPart = lastReturnInvoiceNumber.slice(slashIndex + 1);
+
+    const dashIndex = prefixAndDate.lastIndexOf('-');
+    const prefix = dashIndex === -1 ? prefixAndDate : prefixAndDate.slice(0, dashIndex);
+
+    const lastCounter = parseInt(counterPart, 10);
+    const nextCounter = Number.isNaN(lastCounter) ? 1 : lastCounter + 1;
+    // Keep the same zero-padding width the last invoice number used (falls
+    // back to 4 digits if that couldn't be determined).
+    const paddedCounter = String(nextCounter).padStart(counterPart.length || 4, '0');
+
+    return `${prefix}-${dateStr}/${paddedCounter}`;
+  } catch (err) {
+    console.error('Failed to fetch last return invoice number, falling back to a fresh one:', err);
+    return fallback;
   }
-];
+};
 
 function ReturnSection() {
   const [invoiceInput, setInvoiceInput] = useState('');
@@ -76,9 +129,13 @@ function ReturnSection() {
     setCompletedReturn(null);
 
     try {
-     const response = await fetch(
-  `${API_BASE_URL}/getTransactionDetails?invoiceNumber=${encodeURIComponent(invoiceNumber)}`
-);
+      // NOTE: the backend controller binds this as [FromQuery] string
+      // invoiceNumber — NOT returnInvoiceNumber — so the query param name
+      // below must be "invoiceNumber" or every call 400s with "Invoice
+      // number is required." regardless of the value/encoding sent.
+      const response = await fetch(
+        `${API_BASE_URL}/GetTransactionDetails?invoiceNumber=${encodeURIComponent(invoiceNumber)}`
+      );
 
       if (response.status === 404) {
         setFetchError('No transaction found with this invoice number.');
@@ -268,7 +325,18 @@ function ReturnSection() {
     const itemsToReturn = selectedList.filter((item) => item.returnQty > 0);
     if (itemsToReturn.length === 0) return;
 
-    const returnInvoiceNumber = getReturnInvoiceNumber();
+    setIsSubmittingReturn(true);
+    setSubmitError('');
+
+    let returnInvoiceNumber;
+    try {
+      returnInvoiceNumber = await getReturnInvoiceNumber();
+    } catch (err) {
+      console.error('Failed to generate return invoice number:', err);
+      setSubmitError('Could not generate a return invoice number. Please try again.');
+      setIsSubmittingReturn(false);
+      return;
+    }
 
     const payload = {
       phoneNumber: transaction.customerMobile,
@@ -288,6 +356,10 @@ function ReturnSection() {
 
     // Snapshot the returned items' display details now, since transaction/selectedItems
     // get cleared right after a successful submit and the receipt needs this data.
+    // cgst/sgst are carried through from the transaction items (sourced from
+    // GetTransactionDetails, which already includes them) so ReturnBill can
+    // render its Tax Details table right after a fresh submission, not just
+    // when viewing a past return via GetReturnDetail.
     const returnedItemsSnapshot = itemsToReturn.map((item) => {
       const unitAfterTax = item.quantity > 0 ? item.afterTaxation / item.quantity : 0;
       return {
@@ -296,12 +368,11 @@ function ReturnSection() {
         barcode: item.barcode,
         quantity: item.returnQty,
         salePrice: item.salePrice,
+        cgst: item.cgst,
+        sgst: item.sgst,
         lineTotal: unitAfterTax * item.returnQty
       };
     });
-
-    setIsSubmittingReturn(true);
-    setSubmitError('');
 
     try {
       const response = await fetch(`${API_BASE_URL}/addReturn`, {
@@ -323,6 +394,10 @@ function ReturnSection() {
         customerMobile: transaction.customerMobile,
         items: returnedItemsSnapshot,
         totalAmount: result.totalAmount ?? returnTotal,
+        // Wallet balance as it stood before this return was applied — taken
+        // from the transaction we already had loaded, before the backend's
+        // credit. Lets the receipt show Previous → Credited → New.
+        previousCustomerBalance: transaction.customerBalance,
         updatedCustomerBalance: result.updatedCustomerBalance,
         completedAt: new Date().toISOString()
       });
@@ -343,6 +418,85 @@ function ReturnSection() {
       setIsSubmittingReturn(false);
     }
   };
+
+  // ── View a past return: fetch its full detail and open it in ReturnBill ──
+  // Mirrors PurchaseMasterList's handlePrint for original invoices.
+  const handleViewReturn = async (returnInvoiceNumber) => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/getReturnDetail?returnInvoiceNumber=${encodeURIComponent(returnInvoiceNumber)}`
+      );
+
+      if (!response.ok) {
+        throw new Error('Unable to load this return.');
+      }
+
+      const data = await response.json();
+
+      const previousCustomerBalance =
+        data.previousCustomerBalance ??
+        // Fall back to deriving it, if the backend doesn't send it directly:
+        // wallet credits only add, so previous = updated - refunded.
+        (data.updatedCustomerBalance != null
+          ? Number(data.updatedCustomerBalance) - Number(data.totalAmount)
+          : null);
+
+      setCompletedReturn({
+        returnInvoiceNumber: data.returnInvoiceNumber,
+        originalInvoiceNumber: data.originalInvoiceNumber ?? data.invoiceNumber,
+        customerName: data.customerName,
+        customerMobile: data.customerMobile,
+        // cgst/sgst now come through from GetReturnDetail (backend includes
+        // them alongside the rest of MProducts' fields) so the Tax Details
+        // table can be rebuilt for a previously-completed return too.
+        items: (data.items ?? []).map((ri) => ({
+          productId: ri.productId,
+          productName: ri.productName,
+          barcode: ri.barcode,
+          quantity: ri.quantity,
+          salePrice: ri.salePrice,
+          cgst: ri.cgst,
+          sgst: ri.sgst,
+          lineTotal: ri.lineTotal ?? ri.afterTaxation ?? (ri.salePrice ?? 0) * (ri.quantity ?? 0)
+        })),
+        totalAmount: data.totalAmount,
+        previousCustomerBalance,
+        updatedCustomerBalance: data.updatedCustomerBalance,
+        completedAt: data.createdDate ?? data.completedAt
+      });
+    } catch (err) {
+      console.error('Failed to load return details:', err);
+      alert(err.message || 'Could not load this return.');
+    }
+  };
+
+  const returnListColumns = [
+    { key: 'returnInvoiceNumber', label: 'Return #' },
+    { key: 'originalInvoiceNumber', label: 'Original Invoice' },
+    { key: 'customerName', label: 'Customer' },
+    {
+      key: 'totalAmount',
+      label: 'Refunded',
+      render: (row) => `₹${Number(row.totalAmount).toFixed(2)}`
+    },
+    {
+      key: 'createdDate',
+      label: 'Date',
+      render: (row) => row.createdDate ? new Date(row.createdDate).toLocaleString() : ''
+    },
+    {
+      key: 'view',
+      label: '',
+      render: (row) => (
+        <button
+          onClick={() => handleViewReturn(row.returnInvoiceNumber)}
+          style={styles.viewButton}
+        >
+          View
+        </button>
+      )
+    }
+  ];
 
   const returnsList = counterId ? (
     <DataTable
@@ -625,6 +779,15 @@ const styles = {
   },
   errorText: {
     color: '#dc3545'
+  },
+  viewButton: {
+    padding: '4px 8px',
+    fontSize: '11px',
+    border: 'none',
+    borderRadius: '4px',
+    backgroundColor: '#2C6B4B',
+    color: 'white',
+    cursor: 'pointer'
   },
   returnsListSection: {
     marginTop: '24px'

@@ -41,6 +41,8 @@ function PurchaseMasterList() {
           name: item.productName,
           quantity: item.quantity,
           price: item.salePrice,
+          mrp: item.mrp ?? item.MRP ?? 0,
+          discount: item.discount ?? 0,
           cgst: item.cgst ?? 0,
           hsnCode: item.hsnCode ?? item.hsn ?? item.HSNCode ?? '-'
         })),

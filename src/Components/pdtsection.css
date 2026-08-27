@@ -1,0 +1,886 @@
+/* Add these rules to your existing pdtsection.css */
+
+/* ── Layout: sidebar + main content + billing panel side by side ── */
+.pdt-shell {
+  display: flex;
+  align-items: flex-start;
+  min-height: 100vh;
+}
+
+.pdt-main {
+  flex: 1;
+  min-width: 0; /* allows content to shrink instead of overflowing */
+}
+
+/* ── Vertical sidebar navbar (left side) ── */
+.pdt-navbar--vertical {
+  flex-shrink: 0;
+  width: 200px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  background: #111827;
+  overflow-y: auto;
+}
+
+.pdt-navbar--vertical .pdt-nav-links {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  list-style: none;
+  margin: 0;
+}
+
+.pdt-navbar--vertical .pdt-nav-link,
+.pdt-navbar--vertical .pdt-nav-button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 0;
+  color: #e5e7eb;
+  text-decoration: none;
+  border: none;
+  background: transparent;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pdt-navbar--vertical .pdt-nav-link:hover,
+.pdt-navbar--vertical .pdt-nav-button:hover {
+  background: #1f2937;
+}
+
+.pdt-navbar--vertical .pdt-nav-link--active {
+  background: #f59e0b;
+  color: #111827;
+}
+
+.pdt-navbar--vertical .pdt-nav-button--logout {
+  color: #f87171;
+}
+
+.pdt-navbar--vertical .pdt-nav-button--logout:hover {
+  background: #3f1d1d;
+}
+
+/* ── Sale price / MRP display ── */
+.pdt-card-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+
+.pdt-card-price {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #16a34a; /* sale price highlighted in green */
+}
+
+.pdt-card-mrp {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.pdt-card-mrp-strike {
+  text-decoration: line-through;
+}
+
+/* ── Collapsible product listing header ── */
+.pdt-listing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.pdt-toggle-btn {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pdt-toggle-btn:hover {
+  background: #1f2937;
+}
+
+/* ── Billing panel column ── */
+.pdt-billing-panel {
+  flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX: overrides for leftover rules from the old horizontal-navbar
+   + fixed-position billing sidebar layout, which were fighting
+   with the new flex-based vertical sidebar layout and causing
+   overflow (hiding the Show Products button) and a bulky navbar.
+   Keep this block LAST in the file so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-main {
+  height: auto;
+  overflow-y: visible;
+}
+
+.pdt-shell {
+  overflow-x: hidden;
+}
+
+/* The old .pdt-navbar was built for a horizontal bar: centered
+   row, wide padding, horizontal scroll. Reset all of that for
+   the vertical variant so it's a slim, non-bulky column. */
+.pdt-navbar--vertical {
+  display: block;
+  align-items: stretch;
+  padding: 0;
+  overflow-x: hidden;
+  box-shadow: none;
+  width: 180px;
+}
+
+.pdt-navbar--vertical .pdt-nav-link,
+.pdt-navbar--vertical .pdt-nav-button {
+  padding: 10px 16px;
+  font-size: 0.82rem;
+}
+
+/* Keep the "Show Products" toggle pinned next to the heading
+   instead of being pushed off to the far edge of a stretched
+   content area. */
+.pdt-listing-header {
+  justify-content: flex-start;
+}
+
+.pdt-toggle-btn {
+  margin-left: 16px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 2: navbar height should hug its content instead of
+   stretching the full viewport, and each nav item becomes a
+   small, separated square tile instead of one flush column.
+   Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-navbar--vertical {
+  height: fit-content;
+  position: sticky;
+  top: 0;
+  width: fit-content;
+  padding: 10px;
+}
+
+.pdt-navbar--vertical .pdt-nav-links {
+  gap: 8px;
+  padding: 0;
+  align-items: flex-start;
+}
+
+.pdt-navbar--vertical .pdt-nav-links li {
+  list-style: none;
+  width: fit-content;
+}
+
+.pdt-navbar--vertical .pdt-nav-link,
+.pdt-navbar--vertical .pdt-nav-button {
+  width: fit-content;
+  height: fit-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  line-height: 1.15;
+  background: #1a2030;
+  white-space: nowrap;
+}
+
+.pdt-navbar--vertical .pdt-nav-link:hover,
+.pdt-navbar--vertical .pdt-nav-button:hover {
+  background: #1f2937;
+}
+
+.pdt-navbar--vertical .pdt-nav-link--active {
+  background: #f59e0b;
+  color: #111827;
+  border-color: #f59e0b;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 3: icon-only nav — no outer navbar background, each item
+   is a small "cute" rounded square icon button, label appears
+   as a hover tooltip. Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-navbar--vertical {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.pdt-navbar--vertical .pdt-nav-links {
+  gap: 10px;
+}
+
+.pdt-navbar--vertical .pdt-nav-link,
+.pdt-navbar--vertical .pdt-nav-button {
+  position: relative; /* anchors the hover tooltip */
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #1a2030;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.pdt-navbar--vertical .pdt-nav-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+/* Label is hidden by default and only shown as a tooltip on hover */
+.pdt-navbar--vertical .pdt-nav-label {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #111827;
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 60;
+}
+
+.pdt-navbar--vertical .pdt-nav-link:hover .pdt-nav-label,
+.pdt-navbar--vertical .pdt-nav-button:hover .pdt-nav-label {
+  opacity: 1;
+  visibility: visible;
+}
+
+.pdt-navbar--vertical .pdt-nav-link--active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 4: re-asserted product grid/card styling, self-contained,
+   in case it wasn't taking effect earlier due to ordering/specificity
+   in the rest of the stylesheet. Also styles the now-clickable card
+   (Add to Cart button removed — the whole card is the click target).
+   Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.pdt-card {
+  background: #fff;
+  border: 1px solid #e7e8ec;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.pdt-card-title {
+  margin: 0 0 4px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.25;
+}
+
+.pdt-card-row {
+  margin: 2px 0;
+  font-size: 0.82rem;
+  color: #5b6270;
+  line-height: 1.35;
+}
+
+.pdt-card-row strong {
+  color: #111827;
+}
+
+/* Whole card is now the click target (Add to Cart button removed) */
+.pdt-card--clickable {
+  cursor: pointer;
+  outline: none;
+}
+
+.pdt-card--clickable:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
+  border-color: #16a34a;
+}
+
+.pdt-card--clickable:active {
+  transform: translateY(-1px);
+}
+
+.pdt-card--clickable:focus-visible {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 6: navbar was only `position: sticky`, which pins vertically
+   but still moves with horizontal scroll — that's the "dragging"
+   behavior. Switch to position: fixed so it's anchored to the
+   viewport and never moves, then reserve matching space on
+   .pdt-main so content doesn't run underneath it. Also styles the
+   new column-count selector.
+   Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-navbar--vertical {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 74px; /* 44px icon box + padding, fixed so we can reserve space for it */
+}
+
+.pdt-main {
+  margin-left: 74px;
+}
+
+/* Column-count selector next to the Show/Hide Products button */
+.pdt-column-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 16px;
+  font-size: 0.82rem;
+  color: #374151;
+}
+
+.pdt-column-select select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 7: The billing panel is a normal in-flow flex child now
+   (BillingSection is no longer position: fixed internally — its
+   width is driven entirely by its wrapper, .pdt-billing-panel,
+   which pdtsection.jsx sets inline to a fixed 50%). .pdt-main has
+   flex: 1, so it automatically fills whatever space is left after
+   the 74px navbar and the 50% billing panel — no margin-right
+   reservation needed, and no dead gap between the two.
+   Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+/* position: sticky only "sticks" while its parent is taller than
+   the sticky element itself, giving it room to scroll past. Here
+   the wrapper is always exactly as tall as its child, so there's
+   no scroll distance for sticky to use — the panel just scrolls
+   away with the page. position: fixed sidesteps that: pin the
+   wrapper straight to the viewport's right edge (same approach
+   already used for the navbar on the left), independent of any
+   parent's height or scroll behavior. .pdt-main's margin-right is
+   set inline to this same width value, so the two stay in sync at
+   any width — no gap, no overlap. */
+.pdt-billing-panel {
+  position: fixed !important;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* The child BillingSection renders just fills the fixed wrapper —
+   no positioning of its own needed anymore. */
+.pdt-billing-panel > * {
+  width: 100% !important;
+  position: static !important;
+  height: auto !important;
+}
+
+/* Clear visual divider between the product side and billing side */
+.pdt-billing-panel {
+  border-left: 1px solid #e2e4e9;
+  box-shadow: -6px 0 16px rgba(16, 24, 40, 0.04);
+}
+/* Add these rules to your existing pdtsection.css */
+
+/* ── Layout: sidebar + main content + billing panel side by side ── */
+.pdt-shell {
+  display: flex;
+  align-items: flex-start;
+  min-height: 100vh;
+}
+
+.pdt-main {
+  flex: 1;
+  min-width: 0; /* allows content to shrink instead of overflowing */
+}
+
+/* ── Vertical sidebar navbar (left side) ── */
+.pdt-navbar--vertical {
+  flex-shrink: 0;
+  width: 200px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  background: #111827;
+  overflow-y: auto;
+}
+
+.pdt-navbar--vertical .pdt-nav-links {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  list-style: none;
+  margin: 0;
+}
+
+.pdt-navbar--vertical .pdt-nav-link,
+.pdt-navbar--vertical .pdt-nav-button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 0;
+  color: #e5e7eb;
+  text-decoration: none;
+  border: none;
+  background: transparent;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pdt-navbar--vertical .pdt-nav-link:hover,
+.pdt-navbar--vertical .pdt-nav-button:hover {
+  background: #1f2937;
+}
+
+.pdt-navbar--vertical .pdt-nav-link--active {
+  background: #f59e0b;
+  color: #111827;
+}
+
+.pdt-navbar--vertical .pdt-nav-button--logout {
+  color: #f87171;
+}
+
+.pdt-navbar--vertical .pdt-nav-button--logout:hover {
+  background: #3f1d1d;
+}
+
+/* ── Sale price / MRP display ── */
+.pdt-card-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+
+.pdt-card-price {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #16a34a; /* sale price highlighted in green */
+}
+
+.pdt-card-mrp {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.pdt-card-mrp-strike {
+  text-decoration: line-through;
+}
+
+/* ── Collapsible product listing header ── */
+.pdt-listing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.pdt-toggle-btn {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pdt-toggle-btn:hover {
+  background: #1f2937;
+}
+
+/* ── Billing panel column ── */
+.pdt-billing-panel {
+  flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX: overrides for leftover rules from the old horizontal-navbar
+   + fixed-position billing sidebar layout, which were fighting
+   with the new flex-based vertical sidebar layout and causing
+   overflow (hiding the Show Products button) and a bulky navbar.
+   Keep this block LAST in the file so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-main {
+  height: auto;
+  overflow-y: visible;
+}
+
+.pdt-shell {
+  overflow-x: hidden;
+}
+
+/* The old .pdt-navbar was built for a horizontal bar: centered
+   row, wide padding, horizontal scroll. Reset all of that for
+   the vertical variant so it's a slim, non-bulky column. */
+.pdt-navbar--vertical {
+  display: block;
+  align-items: stretch;
+  padding: 0;
+  overflow-x: hidden;
+  box-shadow: none;
+  width: 180px;
+}
+
+.pdt-navbar--vertical .pdt-nav-link,
+.pdt-navbar--vertical .pdt-nav-button {
+  padding: 10px 16px;
+  font-size: 0.82rem;
+}
+
+/* Keep the "Show Products" toggle pinned next to the heading
+   instead of being pushed off to the far edge of a stretched
+   content area. */
+.pdt-listing-header {
+  justify-content: flex-start;
+}
+
+.pdt-toggle-btn {
+  margin-left: 16px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 2: navbar height should hug its content instead of
+   stretching the full viewport, and each nav item becomes a
+   small, separated square tile instead of one flush column.
+   Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-navbar--vertical {
+  height: fit-content;
+  position: sticky;
+  top: 0;
+  width: fit-content;
+  padding: 10px;
+}
+
+.pdt-navbar--vertical .pdt-nav-links {
+  gap: 8px;
+  padding: 0;
+  align-items: flex-start;
+}
+
+.pdt-navbar--vertical .pdt-nav-links li {
+  list-style: none;
+  width: fit-content;
+}
+
+.pdt-navbar--vertical .pdt-nav-link,
+.pdt-navbar--vertical .pdt-nav-button {
+  width: fit-content;
+  height: fit-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  line-height: 1.15;
+  background: #1a2030;
+  white-space: nowrap;
+}
+
+.pdt-navbar--vertical .pdt-nav-link:hover,
+.pdt-navbar--vertical .pdt-nav-button:hover {
+  background: #1f2937;
+}
+
+.pdt-navbar--vertical .pdt-nav-link--active {
+  background: #f59e0b;
+  color: #111827;
+  border-color: #f59e0b;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 3: icon-only nav — no outer navbar background, each item
+   is a small "cute" rounded square icon button, label appears
+   as a hover tooltip. Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-navbar--vertical {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.pdt-navbar--vertical .pdt-nav-links {
+  gap: 10px;
+}
+
+.pdt-navbar--vertical .pdt-nav-link,
+.pdt-navbar--vertical .pdt-nav-button {
+  position: relative; /* anchors the hover tooltip */
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #1a2030;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.pdt-navbar--vertical .pdt-nav-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+/* Label is hidden by default and only shown as a tooltip on hover */
+.pdt-navbar--vertical .pdt-nav-label {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #111827;
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 60;
+}
+
+.pdt-navbar--vertical .pdt-nav-link:hover .pdt-nav-label,
+.pdt-navbar--vertical .pdt-nav-button:hover .pdt-nav-label {
+  opacity: 1;
+  visibility: visible;
+}
+
+.pdt-navbar--vertical .pdt-nav-link--active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 4: re-asserted product grid/card styling, self-contained,
+   in case it wasn't taking effect earlier due to ordering/specificity
+   in the rest of the stylesheet. Also styles the now-clickable card
+   (Add to Cart button removed — the whole card is the click target).
+   Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.pdt-card {
+  background: #fff;
+  border: 1px solid #e7e8ec;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.pdt-card-title {
+  margin: 0 0 4px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.25;
+}
+
+.pdt-card-row {
+  margin: 2px 0;
+  font-size: 0.82rem;
+  color: #5b6270;
+  line-height: 1.35;
+}
+
+.pdt-card-row strong {
+  color: #111827;
+}
+
+/* Whole card is now the click target (Add to Cart button removed) */
+.pdt-card--clickable {
+  cursor: pointer;
+  outline: none;
+}
+
+.pdt-card--clickable:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
+  border-color: #16a34a;
+}
+
+.pdt-card--clickable:active {
+  transform: translateY(-1px);
+}
+
+.pdt-card--clickable:focus-visible {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 6: navbar was only `position: sticky`, which pins vertically
+   but still moves with horizontal scroll — that's the "dragging"
+   behavior. Switch to position: fixed so it's anchored to the
+   viewport and never moves, then reserve matching space on
+   .pdt-main so content doesn't run underneath it. Also styles the
+   new column-count selector.
+   Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+.pdt-navbar--vertical {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 74px; /* 44px icon box + padding, fixed so we can reserve space for it */
+}
+
+.pdt-main {
+  margin-left: 74px;
+}
+
+/* Column-count selector next to the Show/Hide Products button */
+.pdt-column-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 16px;
+  font-size: 0.82rem;
+  color: #374151;
+}
+
+.pdt-column-select select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIX 7: The billing panel is a normal in-flow flex child now
+   (BillingSection is no longer position: fixed internally — its
+   width is driven entirely by its wrapper, .pdt-billing-panel,
+   which pdtsection.jsx sets inline to a fixed 50%). .pdt-main has
+   flex: 1, so it automatically fills whatever space is left after
+   the 74px navbar and the 50% billing panel — no margin-right
+   reservation needed, and no dead gap between the two.
+   Keep this block LAST so it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+
+/* position: sticky only "sticks" while its parent is taller than
+   the sticky element itself, giving it room to scroll past. Here
+   the wrapper is always exactly as tall as its child, so there's
+   no scroll distance for sticky to use — the panel just scrolls
+   away with the page. position: fixed sidesteps that: pin the
+   wrapper straight to the viewport's right edge (same approach
+   already used for the navbar on the left), independent of any
+   parent's height or scroll behavior. .pdt-main's margin-right is
+   set inline to this same width value, so the two stay in sync at
+   any width — no gap, no overlap. */
+.pdt-billing-panel {
+  position: fixed !important;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* The child BillingSection renders just fills the fixed wrapper —
+   no positioning of its own needed anymore. height: 100% (not auto!)
+   is the important part here: auto let the sidebar grow to whatever
+   height its content needed, ignoring the fixed 100vh box around it.
+   That defeated BillingSection's own internal flex-scroll (its cart
+   list is flex: 1; min-height: 0; overflow-y: auto so it scrolls
+   internally while Bill Summary and the buttons stay put) — instead
+   the whole sidebar just overflowed past the viewport and the *page*
+   had to scroll to reach the bottom of it. Clamping to height: 100%
+   here means the sidebar is exactly as tall as this fixed wrapper,
+   so its own internal scroll area actually gets to do its job. */
+.pdt-billing-panel > * {
+  width: 100% !important;
+  position: static !important;
+  height: 100% !important;
+}
+
+/* Tooltip labels render outside the navbar's own box (they sit to
+   the right of each icon via left: calc(100% + 10px)). The navbar
+   used to need overflow-x: hidden to avoid horizontal scroll from
+   its old horizontal-bar days, but that same rule was clipping the
+   tooltips right where they exit the navbar's edge — cutting
+   "Payment" down to "Pay". Icon-only nav no longer needs that
+   clipping, so let overflow be visible instead. Keep this LAST so
+   it wins the cascade.
+   ───────────────────────────────────────────────────────────── */
+.pdt-navbar--vertical {
+  overflow: visible;
+}
+
+/* Clear visual divider between the product side and billing side */
+.pdt-billing-panel {
+  border-left: 1px solid #e2e4e9;
+  box-shadow: -6px 0 16px rgba(16, 24, 40, 0.04);
+}

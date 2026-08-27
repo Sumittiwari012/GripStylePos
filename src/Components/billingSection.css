@@ -1,0 +1,420 @@
+/* Extracted from BillingSection.jsx's inline `styles` object.
+   Class names follow the original style key, kebab-cased and prefixed
+   with `bs-` (BillingSection) to avoid clashing with other components'
+   classes. Three buttons that previously got a per-button color override
+   via `{...styles.primaryButton, backgroundColor: '...'}` are now
+   `bs-primary-button` plus a modifier class (`--payment`, `--quotation`,
+   `--return`) instead of inline overrides. */
+
+.bs-sidebar {
+  width: 30%;
+  min-width: 300px;
+  height: 100vh;
+  position: fixed;
+  right: 0;
+  top: 0;
+  background-color: #f8f9fa;
+  border-left: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-sizing: border-box;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+}
+
+.bs-error-text {
+  color: #dc3545;
+  font-size: 0.85rem;
+  margin: 8px 0 0 0;
+}
+
+.bs-discount-input {
+  width: 70px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  text-align: right;
+  box-sizing: border-box;
+}
+
+.bs-top-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 15px;
+  flex-shrink: 0;
+}
+
+.bs-secondary-button {
+  flex: 1;
+  padding: 10px;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.bs-customer-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 15px;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.bs-customer-name {
+  font-weight: bold;
+}
+
+.bs-customer-number {
+  color: #555;
+}
+
+.bs-customer-wallet {
+  font-weight: bold;
+  color: #28a745;
+}
+
+.bs-search-wrapper {
+  position: relative;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.bs-search-input {
+  width: 100%;
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #aaa;
+  font-size: 15px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.bs-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 5px 0 0 0;
+  padding: 0;
+  list-style-type: none;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.bs-dropdown-item {
+  padding: 10px 15px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #fff;
+}
+
+.bs-dropdown-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bs-dropdown-barcode {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+/* ── Scrollable cart area ──
+   flex: 1 alone isn't enough here: a flex item's default min-height
+   is "auto", which means it refuses to shrink below its own content's
+   natural height even when flex: 1 says it should. That let a long
+   cart grow the whole sidebar past 100vh instead of scrolling inside
+   itself, pushing Bill Summary and the Payment/Quotation/Return
+   buttons below the fold. min-height: 0 overrides that default so
+   this panel actually shrinks to fit and scrolls internally, keeping
+   everything below it always on-screen. */
+.bs-products-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-bottom: 20px;
+}
+
+.bs-section-title {
+  margin: 0 0 10px 0;
+  font-size: 1.1rem;
+  border-bottom: 2px solid #ddd;
+  padding-bottom: 5px;
+}
+
+.bs-empty-text {
+  color: #888;
+  font-style: italic;
+}
+
+/* ── Cart item row: product name + barcode on top, then a 4-column
+   strip of Qty / MRP / Discount / Sale Value underneath. ── */
+.bs-product-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background-color: #fff;
+  border-radius: 6px;
+  border: 1px solid #eee;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+/* ── Highlight the most recently added/updated line item ── */
+.bs-product-row--latest {
+  border-color: #16a34a;
+  background-color: #f0fdf4;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.15);
+}
+
+.bs-product-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bs-product-name {
+  font-weight: bold;
+  font-size: 0.95rem;
+  color: #222;
+}
+
+.bs-product-barcode {
+  font-size: 0.78rem;
+  color: #888;
+}
+
+.bs-product-columns {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e5e5e5;
+}
+
+.bs-product-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bs-col-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #999;
+}
+
+.bs-col-value {
+  font-size: 0.88rem;
+  color: #333;
+}
+
+.bs-col-value--strong {
+  font-weight: bold;
+  color: #16a34a;
+}
+
+.bs-quantity-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bs-icon-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #ccc;
+  background-color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bs-quantity-text {
+  font-weight: bold;
+  min-width: 16px;
+  text-align: center;
+  font-size: 0.88rem;
+}
+
+/* ── Row holding Coupon Code (left) and Bill Summary (right) side by side,
+   each taking up half the available width. ── */
+.bs-coupon-summary-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 15px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.bs-coupon-summary-row > .bs-coupon-container,
+.bs-coupon-summary-row > .bs-summary-container {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+
+/* ── Coupon code section ── */
+.bs-coupon-container {
+  background-color: #fff;
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.bs-coupon-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bs-coupon-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  outline: none;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.bs-coupon-apply-button {
+  padding: 8px 14px;
+  background-color: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.bs-coupon-apply-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bs-coupon-applied-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #f0fdf4;
+  border: 1px solid #16a34a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  gap: 8px;
+}
+
+.bs-coupon-applied-text {
+  font-size: 0.85rem;
+  color: #166534;
+  font-weight: bold;
+}
+
+.bs-coupon-remove-button {
+  background: none;
+  border: none;
+  color: #dc3545;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* ── Bill Summary: padding/spacing/font trimmed down from the original
+   (15px→10px/15px padding, 10px→6px row gaps, 1.2rem→1.05rem total)
+   so the section takes noticeably less vertical space. ── */
+.bs-summary-container {
+  background-color: #fff;
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  margin-bottom: 15px;
+  flex-shrink: 0;
+}
+
+.bs-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  color: #555;
+  font-size: 0.88rem;
+  gap: 6px;
+}
+
+.bs-summary-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #ccc;
+  font-weight: bold;
+  font-size: 1.05rem;
+}
+
+.bs-bottom-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.bs-primary-button {
+  padding: 12px;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.bs-primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bs-primary-button--payment {
+  background-color: #007bff;
+}
+
+.bs-primary-button--quotation {
+  background-color: #ffc107;
+  color: #333;
+}

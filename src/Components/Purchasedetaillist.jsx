@@ -12,14 +12,19 @@ function PurchaseDetailList() {
     { key: 'barcode', label: 'Barcode' },
     { key: 'quantity', label: 'Qty' },
     {
-      key: 'salePrice',
-      label: 'Sale Price',
-      render: (row) => `₹${Number(row.salePrice).toFixed(2)}`
+      key: 'mrp',
+      label: 'MRP',
+      render: (row) => `₹${Number(row.mrp).toFixed(2)}`
     },
     {
-      key: 'afterTaxation',
-      label: 'After Tax',
-      render: (row) => `₹${Number(row.afterTaxation).toFixed(2)}`
+      key: 'discount',
+      label: 'Discount',
+      render: (row) => `₹${Number(row.discount).toFixed(2)}`
+    },
+    {
+      key: 'salePrice',
+      label: 'Sale Value',
+      render: (row) => `₹${(Number(row.salePrice) * Number(row.quantity)).toFixed(2)}`
     }
   ];
 
