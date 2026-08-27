@@ -334,7 +334,11 @@ function BillingSection({ products = [], cart = [], setCart }) {
   //     MRP, per unit).
   //   - Flat-amount coupon: the flat amount is split across items in
   //     proportion to each item's share of the cart's total MRP.
-  //   - item.price = originalPrice − that item's coupon discount per unit.
+  //   - While a coupon is applied, item.price is priced off `mrp` directly
+  //     (mrp − that item's coupon discount per unit) — the coupon
+  //     supersedes any pre-existing product discount rather than stacking
+  //     on top of it. With no coupon applied, item.price falls back to
+  //     originalPrice — the item's normal discounted sale price.
   // Because `price` (not just a separately-tracked discount number) is what
   // gets stored on the item, every downstream consumer — the cart rows
   // below, the /addTransaction payload, and the receipt handed to
@@ -367,8 +371,15 @@ function BillingSection({ products = [], cart = [], setCart }) {
     let changed = false;
     const nextCart = cart.map((item, idx) => {
       const originalPrice = item.originalPrice ?? item.price;
+      const mrp = Number(item.mrp) || originalPrice;
       const couponDiscountPerUnit = item.quantity > 0 ? rawCouponDiscounts[idx] / item.quantity : 0;
-      const newPrice = Math.max(originalPrice - couponDiscountPerUnit, 0);
+
+      // While a coupon is applied, price off MRP directly — the coupon
+      // supersedes any existing product discount rather than stacking on it.
+      // With no coupon applied, rawCouponDiscounts is all zeros, so this
+      // collapses back to originalPrice — the previous discounted state.
+      const basePrice = appliedCoupon ? mrp : originalPrice;
+      const newPrice = Math.max(basePrice - couponDiscountPerUnit, 0);
 
       if (item.originalPrice === originalPrice && Math.abs(newPrice - item.price) < 0.005) {
         return item;
@@ -520,13 +531,26 @@ function BillingSection({ products = [], cart = [], setCart }) {
     return sum + (itemTaxable * (item.cgst / 100) * 2);
   }, 0);
 
-  // Total coupon discount, purely for display in the "Coupon Discount" row
-  // and the applied-coupon badge — derived from originalPrice vs the
-  // current (coupon-adjusted) price, not tracked as separate state.
-  const totalCouponDiscount = cart.reduce((sum, item) => {
-    const originalPrice = item.originalPrice ?? item.price;
-    return sum + Math.max(originalPrice - item.price, 0) * item.quantity;
-  }, 0);
+  // ── Total coupon discount, for the "Coupon Discount" summary row and the
+  // applied-coupon badge ──
+  // FIXED: now computed against `mrp`, not `originalPrice`. Since the
+  // repricing effect above now prices items off `mrp` directly whenever a
+  // coupon is applied (mrp − couponDiscountPerUnit), the coupon's true
+  // discount per item is `mrp − item.price` — not `originalPrice − item.price`.
+  // The old originalPrice-based version silently subtracted back out each
+  // item's pre-existing product discount (mrp − originalPrice), which is why
+  // it under-reported the coupon's real value whenever items already had
+  // their own discount baked in. Gated on `appliedCoupon` so it's exactly 0
+  // with no coupon applied (matching the old behavior), and — because the
+  // per-item proration in the repricing effect is designed to always sum
+  // back to the full flat/percentage amount — this now reliably totals to
+  // the coupon's actual value.
+  const totalCouponDiscount = appliedCoupon
+    ? cart.reduce((sum, item) => {
+        const mrp = Number(item.mrp) || item.originalPrice || item.price;
+        return sum + Math.max(mrp - item.price, 0) * item.quantity;
+      }, 0)
+    : 0;
 
   const safeDiscount = Math.min(Math.max(Number(discount) || 0, 0), totalAmount);
   const payableAmount = totalAmount - safeDiscount;
@@ -566,40 +590,36 @@ function BillingSection({ products = [], cart = [], setCart }) {
     const finalInvoiceNumber = await peekInvoiceNumber();
 
     const payload = {
-      phoneNumber: selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber,
-      invoiceNumber: finalInvoiceNumber,
-      totalAmount,
-      // Combined manual + coupon discount, since the backend only tracks a
-      // single discount figure per transaction.
-      discount: safeDiscount + totalCouponDiscount,
-      couponCode: appliedCoupon?.code ?? null,
-      payableAmount,
-      counterId: Number(counterId),
-      items: cart.map((item) => {
-        const mrp = Number(item.mrp) || item.price;
-        // item.price is already fully discounted (product's own discount +
-        // any coupon share, both baked in by the repricing effect above),
-        // so the per-line discount is simply mrp - price. Sent explicitly
-        // so the backend stores exactly what the customer was shown at
-        // checkout, rather than falling back to its own derivation.
-        const itemDiscount = Math.max(mrp - item.price, 0) * item.quantity;
-        return {
-          productId: item.id,
-          quantity: item.quantity,
-          salePrice: item.price,
-          mrp,
-          discount: itemDiscount,
-          afterTaxation: item.price * item.quantity,
-          hsnCode: item.hsn
-        };
-      }),
-      payments: currentPayments.map((p) => ({
-        paymentMethod: p.method,
-        bankAccountNumber: p.bankAccountNumber ?? null,
-        amountPaid: p.amount
-      }))
+  phoneNumber: selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber,
+  invoiceNumber: finalInvoiceNumber,
+  totalAmount,
+  // Always sent as 0 to the customer purchase master — discount is no
+  // longer reported to the backend, regardless of what was actually
+  // applied (manual discount + coupon). payableAmount still reflects the
+  // real discounted amount the customer paid.
+  discount: 0,
+  couponCode: appliedCoupon?.code ?? null,
+  payableAmount,
+  counterId: Number(counterId),
+  items: cart.map((item) => {
+    const mrp = Number(item.mrp) || item.price;
+    const itemDiscount = Math.max(mrp - item.price, 0) * item.quantity;
+    return {
+      productId: item.id,
+      quantity: item.quantity,
+      salePrice: item.price,
+      mrp,
+      discount: itemDiscount,
+      afterTaxation: item.price * item.quantity,
+      hsnCode: item.hsn
     };
-
+  }),
+  payments: currentPayments.map((p) => ({
+    paymentMethod: p.method,
+    bankAccountNumber: p.bankAccountNumber ?? null,
+    amountPaid: p.amount
+  }))
+};
     try {
       const response = await fetch(`${API_BASE_URL}/addTransaction`, {
         method: 'POST',
