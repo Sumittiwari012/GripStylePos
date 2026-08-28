@@ -278,7 +278,7 @@ function InvoiceBill({ invoice, onClose }) {
               <tr>
                 <th style={styles.th}>Item</th>
                 <th style={styles.th}>QTY/Unit</th>
-                <th style={{...styles.th, textAlign: 'right'}}>MRP</th>
+                <th style={{...styles.th, textAlign: 'right'}}>Price</th>
                 <th style={{...styles.th, textAlign: 'right'}}>Disc.Amt</th>
                 <th style={{...styles.th, textAlign: 'right'}}>Net.Amt</th>
               </tr>
