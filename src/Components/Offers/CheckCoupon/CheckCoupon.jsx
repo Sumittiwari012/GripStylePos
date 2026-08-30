@@ -4,13 +4,16 @@
 // Voucher flow.
 import '../GetCoupon/GetCoupon.css'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, Search, TicketX, Loader2, Eye, X, Download, ChevronDown, ChevronRight, Printer } from 'lucide-react'
+import { RefreshCw, Search, TicketX, Loader2, Eye, X, Download, ChevronDown, ChevronRight } from 'lucide-react'
 import _ from 'lodash'
 // npm install html2canvas — used to rasterize both the modal preview and
-// the per-row print artwork, since VoucherCanvas's exact DOM output (SVG
-// vs plain HTML) isn't known here; capturing the rendered node works
-// either way.
+// the per-row artwork queued for PDF export, since VoucherCanvas's exact
+// DOM output (SVG vs plain HTML) isn't known here; capturing the rendered
+// node works either way.
 import html2canvas from 'html2canvas'
+// npm install jspdf — used to bundle the rasterized coupon artwork into a
+// single downloadable PDF, one coupon per page.
+import { jsPDF } from 'jspdf'
 // Same renderer + default design shape GetCoupon.jsx uses for its preview.
 // Adjust this path if CheckCoupon.jsx ends up at a different depth than
 // GetCoupon.jsx relative to TemplateLibrary.
@@ -199,10 +202,10 @@ function CheckCoupon({ onCancel }) {
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
 
-  // --- Selection (for printing) ------------------------------------------
+  // --- Selection (for PDF export) -----------------------------------------
   // Set of rowKey(couponId, idxInGroup) strings. Kept independent of the
-  // preview/design state below — selecting rows for print doesn't need
-  // their artwork loaded up front (it's fetched on demand when printing).
+  // preview/design state below — selecting rows for export doesn't need
+  // their artwork loaded up front (it's fetched on demand when exporting).
   const [selectedKeys, setSelectedKeys] = useState(() => new Set())
 
   const toggleRowSelected = (key) => {
@@ -242,8 +245,8 @@ function CheckCoupon({ onCancel }) {
 
   const clearSelection = () => setSelectedKeys(new Set())
 
-  // Surfaced next to the Print button if window.open() gets blocked, or if
-  // artwork couldn't be prepared for any of the selected rows.
+  // Surfaced next to the Download PDF button if artwork couldn't be
+  // prepared for any of the selected rows.
   const [printError, setPrintError] = useState('')
 
   // --- Preview (same pattern as GetCoupon.jsx) --------------------------
@@ -251,7 +254,7 @@ function CheckCoupon({ onCancel }) {
   // Cached/keyed by couponId, same as GetCoupon.jsx — the GetCouponUi
   // response has that specific coupon's name/expiry baked in server-side,
   // so it can't be shared across coupons. In-memory only. Also reused by
-  // the print flow below so printing doesn't re-fetch artwork that's
+  // the PDF export flow below so exporting doesn't re-fetch artwork that's
   // already been previewed.
   const [designCache, setDesignCache] = useState({}) // { [couponId]: design }
   const [designStatus, setDesignStatus] = useState({}) // { [couponId]: 'loading' | 'error' }
@@ -365,8 +368,8 @@ function CheckCoupon({ onCancel }) {
       // declared them in its projection.
       setColumns(list.length > 0 ? Object.keys(list[0]) : [])
       // Row identities can shift after a refresh (new/removed assignments),
-      // so any previous print selection is no longer guaranteed to point
-      // at the same rows — drop it rather than risk printing the wrong ones.
+      // so any previous selection is no longer guaranteed to point at the
+      // same rows — drop it rather than risk exporting the wrong ones.
       setSelectedKeys(new Set())
     } catch (err) {
       setError(err.message || 'Something went wrong while loading created coupons.')
@@ -422,17 +425,23 @@ function CheckCoupon({ onCancel }) {
     })
   }
 
-  // --- Print the selected rows as their voucher artwork -------------------
-  // Printing now renders each selected row's actual coupon image (the same
-  // VoucherCanvas design used in the preview modal) rather than a data
-  // table — one coupon image per printed page.
-  const [isPreparingPrint, setIsPreparingPrint] = useState(false)
+  // --- Export the selected rows as a PDF of their voucher artwork --------
+  // Instead of opening a browser print dialog, the selected rows' actual
+  // coupon images (the same VoucherCanvas design used in the preview
+  // modal) are rasterized and bundled straight into a downloadable PDF —
+  // one coupon per page. Each page's dimensions are taken from that
+  // coupon's own rendered size (measured via getBoundingClientRect on its
+  // off-screen node), so the PDF page is exactly the shape of the
+  // template — not a fixed A4/Letter sheet with the artwork centered or
+  // cropped inside it. Different templates in the same export can each
+  // have their own page size.
+  const [isPreparingPdf, setIsPreparingPdf] = useState(false)
   // Queue of { key, name, design } rendered off-screen so html2canvas has
-  // real DOM nodes to rasterize. Cleared once the print window is opened.
+  // real DOM nodes to rasterize. Cleared once the PDF has been generated.
   const [printItems, setPrintItems] = useState([])
   const printNodeRefs = useRef({})
 
-  const handlePrintSelected = async () => {
+  const handleDownloadSelectedPdf = async () => {
     const selectedRows = []
     groupedRows.forEach((group) => {
       group.rows.forEach((row, idx) => {
@@ -442,7 +451,7 @@ function CheckCoupon({ onCancel }) {
     if (selectedRows.length === 0) return
 
     setPrintError('')
-    setIsPreparingPrint(true)
+    setIsPreparingPdf(true)
 
     try {
       // Local copy so repeated coupon ids within the selection (multiple
@@ -463,7 +472,7 @@ function CheckCoupon({ onCancel }) {
             localDesignCache[preview.couponId] = design
           } catch (err) {
             console.error('Failed to load artwork for coupon', preview.couponId, err)
-            continue // skip rows whose artwork can't be loaded, print the rest
+            continue // skip rows whose artwork can't be loaded, export the rest
           }
         }
 
@@ -472,7 +481,7 @@ function CheckCoupon({ onCancel }) {
         const merged = withCodeValue(overridden, codeValueForRow)
 
         items.push({
-          key: `print-${rowKey(preview.couponId, i)}`,
+          key: `pdf-${rowKey(preview.couponId, i)}`,
           name: preview.name || preview.couponUniqueCode || `Coupon ${preview.couponId}`,
           design: merged,
         })
@@ -484,23 +493,24 @@ function CheckCoupon({ onCancel }) {
 
       if (items.length === 0) {
         setPrintError("Couldn't load artwork for the selected coupons.")
-        setIsPreparingPrint(false)
+        setIsPreparingPdf(false)
         return
       }
 
-      // Rendering + rasterizing happens in the effect below once these
-      // off-screen nodes have actually painted.
+      // Rendering + rasterizing + PDF assembly happens in the effect below
+      // once these off-screen nodes have actually painted.
       setPrintItems(items)
     } catch (err) {
-      console.error('Failed to prepare coupons for print:', err)
-      setPrintError('Could not prepare the selected coupons for printing.')
-      setIsPreparingPrint(false)
+      console.error('Failed to prepare coupons for PDF export:', err)
+      setPrintError('Could not prepare the selected coupons for PDF export.')
+      setIsPreparingPdf(false)
     }
   }
 
   // Once printItems are queued, wait a couple of frames for the off-screen
   // VoucherCanvas nodes (and any images inside them) to paint, rasterize
-  // each one, then open a print window with one coupon image per page.
+  // each one, then assemble a PDF — one page per coupon, each page sized
+  // to that coupon's own rendered dimensions — and trigger its download.
   useEffect(() => {
     if (printItems.length === 0) return
     let cancelled = false
@@ -508,91 +518,71 @@ function CheckCoupon({ onCancel }) {
     const run = async () => {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 
-      const images = []
+      let pdf = null
+
       for (const item of printItems) {
         const node = printNodeRefs.current[item.key]
         if (!node) continue
         try {
+          // The node's actual rendered CSS-pixel size — this becomes the
+          // PDF page's dimensions, so the page shape always matches the
+          // template rather than a fixed paper size.
+          const rect = node.getBoundingClientRect()
+          const pageWidth = rect.width
+          const pageHeight = rect.height
+          if (!pageWidth || !pageHeight) continue
+
           const canvas = await html2canvas(node, {
             backgroundColor: '#FFFFFF',
-            scale: 2,
+            scale: 2, // rasterize at higher resolution for a crisp printed/zoomed result
             useCORS: true,
           })
-          images.push({ name: item.name, dataUrl: canvas.toDataURL('image/png') })
+          const dataUrl = canvas.toDataURL('image/png')
+          const orientation = pageWidth >= pageHeight ? 'landscape' : 'portrait'
+
+          if (!pdf) {
+            // First page also defines the jsPDF document's initial size.
+            pdf = new jsPDF({
+              orientation,
+              unit: 'px',
+              format: [pageWidth, pageHeight],
+              hotfixes: ['px_scaling'],
+            })
+          } else {
+            // Each subsequent page gets its own [width, height], so a
+            // mixed selection of differently-sized templates still gets
+            // one correctly-sized page per coupon.
+            pdf.addPage([pageWidth, pageHeight], orientation)
+          }
+
+          // Image is drawn to fill the page exactly, since the page was
+          // sized to match it (the higher-resolution canvas is simply
+          // downscaled to fit — quality comes from the scale:2 capture,
+          // not from the page size).
+          pdf.addImage(dataUrl, 'PNG', 0, 0, pageWidth, pageHeight)
         } catch (err) {
-          console.error('Failed to rasterize coupon for print:', item.key, err)
+          console.error('Failed to rasterize coupon for PDF:', item.key, err)
         }
       }
 
       if (cancelled) return
 
-      if (images.length === 0) {
-        setPrintError('Could not prepare the selected coupons for printing.')
+      if (!pdf) {
+        setPrintError('Could not prepare the selected coupons for PDF export.')
         setPrintItems([])
-        setIsPreparingPrint(false)
+        setIsPreparingPdf(false)
         return
       }
 
-      // NOTE: deliberately no 'noopener' here — passing it makes several
-      // browsers (Chrome included) hand back a null/unusable reference for
-      // the new tab, since noopener's whole point is to sever that link.
-      // We generate the tab's content ourselves, so we need the reference.
-      const printWindow = window.open('', '_blank')
-      if (!printWindow) {
-        setPrintError('Please allow pop-ups for this site to print.')
-        setPrintItems([])
-        setIsPreparingPrint(false)
-        return
-      }
+      const fileName =
+        printItems.length === 1
+          ? `${(printItems[0].name || 'coupon').toString().trim().replace(/\s+/g, '_')}.pdf`
+          : `coupons_${new Date().toISOString().slice(0, 10)}.pdf`
 
-      const pagesHtml = images
-        .map(
-          (img) => `
-      <div class="cc-print-page">
-        <img src="${img.dataUrl}" alt="${_.escape(img.name)}" />
-      </div>`
-        )
-        .join('')
-
-      printWindow.document.write(`<!DOCTYPE html>
-<html>
-  <head>
-    <title>Print Coupons</title>
-    <meta charset="utf-8" />
-    <style>
-      * { box-sizing: border-box; }
-      body { margin: 0; padding: 0; }
-      .cc-print-page {
-        width: 100%;
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        page-break-after: always;
-        padding: 24px;
-      }
-      .cc-print-page:last-child { page-break-after: auto; }
-      .cc-print-page img {
-        max-width: 100%;
-        max-height: 100vh;
-        object-fit: contain;
-      }
-      @media print {
-        .cc-print-page { min-height: auto; }
-      }
-    </style>
-  </head>
-  <body>${pagesHtml}
-  </body>
-</html>`)
-      printWindow.document.close()
-      printWindow.focus()
-      printWindow.onload = () => printWindow.print()
-      // Fallback in case onload doesn't fire (some browsers with document.write).
-      setTimeout(() => printWindow.print(), 300)
+      pdf.save(fileName)
 
       setPrintItems([])
-      setIsPreparingPrint(false)
+      setIsPreparingPdf(false)
     }
 
     run()
@@ -618,18 +608,18 @@ function CheckCoupon({ onCancel }) {
         <button
           type="button"
           className="cc-print-button"
-          onClick={handlePrintSelected}
-          disabled={selectedCount === 0 || isPreparingPrint}
-          title={selectedCount === 0 ? 'Select coupons to print' : `Print ${selectedCount} selected`}
+          onClick={handleDownloadSelectedPdf}
+          disabled={selectedCount === 0 || isPreparingPdf}
+          title={selectedCount === 0 ? 'Select coupons to download' : `Download ${selectedCount} selected as PDF`}
         >
-          {isPreparingPrint ? (
+          {isPreparingPdf ? (
             <Loader2 size={16} strokeWidth={2.25} className="gc-spin" />
           ) : (
-            <Printer size={16} strokeWidth={2.25} />
+            <Download size={16} strokeWidth={2.25} />
           )}
-          {isPreparingPrint ? 'Preparing…' : `Print${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
+          {isPreparingPdf ? 'Preparing…' : `Download PDF${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
         </button>
-        {selectedCount > 0 && !isPreparingPrint && (
+        {selectedCount > 0 && !isPreparingPdf && (
           <button type="button" className="cc-clear-button" onClick={clearSelection}>
             Clear selection
           </button>
@@ -736,7 +726,7 @@ function CheckCoupon({ onCancel }) {
                                   className="cc-checkbox"
                                   checked={isChecked}
                                   onChange={() => toggleRowSelected(key)}
-                                  aria-label="Select row for print"
+                                  aria-label="Select row for PDF export"
                                 />
                               </td>
                               {columns.map((col) => (
@@ -845,10 +835,11 @@ function CheckCoupon({ onCancel }) {
         </div>
       )}
 
-      {/* Off-screen render target for the print flow: each selected
+      {/* Off-screen render target for the PDF export flow: each selected
           coupon's design is mounted here (never visible to the user) so
-          html2canvas has a real DOM node per coupon to rasterize before
-          the print window opens. Cleared as soon as capture finishes. */}
+          html2canvas has a real DOM node per coupon to rasterize, and so
+          getBoundingClientRect() can measure its true rendered size for
+          the PDF page dimensions. Cleared as soon as the PDF is generated. */}
       {printItems.length > 0 && (
         <div aria-hidden="true" style={{ position: 'fixed', top: 0, left: -99999, pointerEvents: 'none' }}>
           {printItems.map((item) => (
