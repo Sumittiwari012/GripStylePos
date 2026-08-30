@@ -7,7 +7,7 @@ import { Routes, Route } from "react-router-dom";
 import Accounts from "./Components/accounts";
 import Offers from "./Components/Offers/Offers";
 import CouponVoucher from './Components/Offers/CouponVoucher';
-import CategorySalesDashboard from './Components/CategorySalesDashboard/CategorySalesDashBoard';
+import CategorySalesDashboard from './Components/CategorySalesDashboard/CategorySalesDashboard';
 
 function App() {
   
