@@ -1,0 +1,325 @@
+.csd-wrap {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          font-family: inherit;
+        }
+
+        .csd-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+
+        .csd-header h2 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 700;
+          color: #1C1A24;
+          flex: 1;
+        }
+
+        .csd-metric-toggle {
+          display: flex;
+          border: 1px solid #E4E1EE;
+          border-radius: 8px;
+          overflow: hidden;
+        }
+
+        .csd-metric-btn {
+          padding: 7px 14px;
+          border: none;
+          background: #FFFFFF;
+          color: #6B667F;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .csd-metric-btn.active {
+          background: #1C1A24;
+          color: #FFFFFF;
+        }
+
+        .csd-refresh {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: 8px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          color: #1C1A24;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .csd-refresh:hover {
+          background: #F6F5FA;
+        }
+
+        .csd-spin {
+          animation: csd-spin 0.9s linear infinite;
+        }
+
+        @keyframes csd-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .csd-loading {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 24px 4px;
+          color: #6B667F;
+          font-size: 14px;
+          font-weight: 500;
+        }
+
+        .csd-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          padding: 32px 16px;
+          text-align: center;
+          border: 1px dashed #E4E1EE;
+          border-radius: 12px;
+          background: #FBFAFD;
+        }
+
+        .csd-empty__title {
+          margin: 4px 0 0;
+          font-size: 14px;
+          font-weight: 700;
+          color: #1C1A24;
+        }
+
+        .csd-empty__sub {
+          margin: 0;
+          font-size: 13px;
+          color: #6B667F;
+        }
+
+        .csd-retry {
+          margin-top: 6px;
+          padding: 7px 14px;
+          border-radius: 8px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .csd-chip-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .csd-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 7px 14px;
+          border-radius: 999px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          color: #1C1A24;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .csd-chip:hover {
+          background: #F6F5FA;
+        }
+
+        .csd-chip-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .csd-chart-card {
+          border: 1px solid #E4E1EE;
+          border-radius: 14px;
+          background: #FFFFFF;
+          padding: 16px 12px 8px;
+        }
+
+        .csd-chart-loading {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 8px 0;
+          color: #6B667F;
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        .csd-chart-caption {
+          margin: 4px 8px 4px;
+          font-size: 12px;
+          color: #8A85A0;
+        }
+
+        /* --- Date range filter, sits above the chart --- */
+        .csd-date-filter {
+          display: flex;
+          align-items: flex-end;
+          flex-wrap: wrap;
+          gap: 12px;
+          padding: 4px 8px 16px;
+        }
+
+        .csd-date-filter-field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .csd-date-filter-field span {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: #8A85A0;
+        }
+
+        .csd-date-filter-field input[type='date'] {
+          padding: 7px 10px;
+          border-radius: 8px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          color: #1C1A24;
+          font-size: 13px;
+          font-family: inherit;
+        }
+
+        .csd-date-filter-field input[type='date']:focus {
+          outline: none;
+          border-color: #B9762E;
+        }
+
+        .csd-date-filter-clear {
+          padding: 7px 14px;
+          border-radius: 8px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          color: #6B667F;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .csd-date-filter-clear:hover {
+          background: #F6F5FA;
+          color: #1C1A24;
+        }
+
+        .csd-groups {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .csd-group {
+          border: 1px solid #E4E1EE;
+          border-radius: 12px;
+          background: #FFFFFF;
+          overflow: hidden;
+        }
+
+        .csd-group-header {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px 16px;
+          background: #FBFAFD;
+          border: none;
+          cursor: pointer;
+          text-align: left;
+        }
+
+        .csd-group-header:hover {
+          background: #F6F5FA;
+        }
+
+        .csd-group-header-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #1C1A24;
+        }
+
+        .csd-group-title {
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+        .csd-group-count {
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B667F;
+          background: #F0EEF6;
+          padding: 3px 10px;
+          border-radius: 999px;
+          white-space: nowrap;
+        }
+
+        .csd-group-error {
+          margin: 0;
+          padding: 10px 16px;
+          font-size: 13px;
+          color: #B3261E;
+        }
+
+        .csd-table-wrap {
+          overflow-x: auto;
+          border-top: 1px solid #E4E1EE;
+        }
+
+        .csd-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+
+        .csd-table thead th {
+          text-align: left;
+          padding: 10px 14px;
+          background: #F6F5FA;
+          color: #6B667F;
+          font-weight: 600;
+          font-size: 11px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          border-bottom: 1px solid #E4E1EE;
+        }
+
+        .csd-table tbody td {
+          padding: 10px 14px;
+          color: #1C1A24;
+          border-bottom: 1px solid #F0EEF6;
+        }
+
+        .csd-table tbody tr:last-child td {
+          border-bottom: none;
+        }
+
+        .csd-table-empty {
+          text-align: center;
+          color: #8A85A0;
+          padding: 16px !important;
+        }
