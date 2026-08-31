@@ -1,21 +1,29 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import QRCode from 'qrcode'
 
 // -----------------------------------------------------------------------
 // QR rendering — real scannable modules via the `qrcode` package.
-// -----------------------------------------------------------------------
+//
+// IMPORTANT: QRCode.create() is a SYNCHRONOUS, pure function of `value` —
+// it does no I/O and returns immediately. The previous version wrapped it
+// in useEffect/useState for no functional reason, which meant it only
+// ever produced output once the component had mounted in a real browser
+// and its effect had run. That breaks the export pipeline in
+// CheckCoupon.jsx, which renders VoucherCanvas via
+// ReactDOMServer.renderToStaticMarkup — a render path that NEVER runs
+// effects. The exported SVG markup therefore always had qr=null and
+// rendered nothing, even though the live on-screen preview (which does
+// get to run its effect) looked correct. Computing the matrix directly
+// during render — the same way the text elements already work — makes
+// this component render identically whether it's mounted live or
+// serialized statically for export.
 export function QrCells({ value, x, y, size, color, quietZone = 1.5 }) {
-  const [qr, setQr] = useState(null)
-  useEffect(() => {
-    let cancelled = false
-    try {
-      const matrix = QRCode.create(value || ' ', { errorCorrectionLevel: 'M' })
-      if (!cancelled) setQr(matrix)
-    } catch (e) {
-      if (!cancelled) setQr(null)
-    }
-    return () => { cancelled = true }
-  }, [value])
+  let qr = null
+  try {
+    qr = QRCode.create(value || ' ', { errorCorrectionLevel: 'M' })
+  } catch (e) {
+    qr = null
+  }
 
   if (!qr) return null
 

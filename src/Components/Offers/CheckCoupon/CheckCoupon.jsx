@@ -4,13 +4,9 @@
 // Voucher flow.
 import '../GetCoupon/GetCoupon.css'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, Search, TicketX, Loader2, Eye, X, Download, ChevronDown, ChevronRight } from 'lucide-react'
+import ReactDOMServer from 'react-dom/server'
+import { RefreshCw, Search, TicketX, Loader2, Eye, X, Download, Printer, ChevronDown, ChevronRight } from 'lucide-react'
 import _ from 'lodash'
-// npm install html2canvas — used to rasterize both the modal preview and
-// the per-row artwork queued for PDF export, since VoucherCanvas's exact
-// DOM output (SVG vs plain HTML) isn't known here; capturing the rendered
-// node works either way.
-import html2canvas from 'html2canvas'
 // npm install jspdf — used to bundle the rasterized coupon artwork into a
 // single downloadable PDF, one coupon per page.
 import { jsPDF } from 'jspdf'
@@ -22,6 +18,175 @@ import { baseDesign } from '../TemplateLibrary/lib/design'
 
 // Adjust if your API is mounted elsewhere / behind a different host.
 const API_BASE = 'https://gripstyleapi.runasp.net'
+
+// --- Rasterization ---------------------------------------------------
+// PERFORMANCE NOTE (why this replaced the old html2canvas pipeline):
+// The old version mounted each coupon as real off-screen DOM, waited two
+// animation frames for it to paint, then ran html2canvas over it —
+// html2canvas re-implements layout/paint in JS by walking every node and
+// reading its computed style, which is inherently slow and CPU-bound
+// (only one node tree processed at a time). For ~174 coupons that's what
+// pushed the export to ~160s, no matter how the mounting was pipelined.
+//
+// VoucherCanvas renders as a single <svg> root, so instead we serialize
+// its markup directly (ReactDOMServer.renderToStaticMarkup — no DOM
+// mount, no layout/paint wait needed at all, since size is derived
+// analytically from design.widthMM/heightMM), load it into an Image, and
+// draw that onto a canvas. The browser's own native SVG decoder does the
+// rasterizing in one shot instead of walking the tree in JS. Because
+// there's no shared live DOM involved, rasterizations can also run
+// several at once (RASTERIZE_CONCURRENCY) with no layout-thrashing risk.
+//
+// Physical size (design.widthMM/heightMM, the same fields VoucherCanvas
+// itself uses for its aspect ratio) drives the raster resolution, so
+// output is print-accurate rather than tied to whatever size the
+// on-screen CSS happened to render at.
+const EXPORT_DPI = 300
+const RASTERIZE_CONCURRENCY = 6
+
+// Runs `fn` over `items` with at most `limit` in flight at once,
+// preserving each result at its original index. Used for BOTH the
+// GetCouponUi fetch and the rasterize step together (see
+// runSelectedExport below) — the old version ran all fetches serially
+// first and only pipelined the rasterize step, which meant ~174
+// sequential network round-trips had to finish before any rasterization
+// even began. Merging fetch+rasterize into a single concurrent pipeline
+// removes that serial wait.
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length)
+  let nextIndex = 0
+  async function worker() {
+    while (nextIndex < items.length) {
+      const current = nextIndex++
+      results[current] = await fn(items[current], current)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
+// Fetches a (possibly cross-origin) image URL and converts it to a
+// base64 data: URL, caching by URL so a logo/asset reused across many
+// coupons is only ever fetched once per export session. Inlining images
+// this way — rather than leaving remote <image href="https://..."> refs
+// in the SVG — avoids canvas tainting from cross-origin resources when
+// the rasterized SVG is later drawn to a canvas.
+const imageDataUrlCache = new Map()
+function fetchAsDataUrl(url) {
+  if (!imageDataUrlCache.has(url)) {
+    const promise = fetch(url)
+      .then((res) => res.blob())
+      .then(
+        (blob) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = () => reject(new Error('Failed to read image blob'))
+            reader.readAsDataURL(blob)
+          })
+      )
+    imageDataUrlCache.set(url, promise)
+  }
+  return imageDataUrlCache.get(url)
+}
+
+// Freeform Canvas-added image elements (design.elements[].type === 'image')
+// are the only place VoucherCanvas can reference an external image URL —
+// named slots (qr/barcode/medallion/etc.) are all drawn as vectors/text.
+// Returns a design with any such http(s) src swapped for an inlined data
+// URL; returns the same design unchanged if there's nothing to inline.
+async function inlineExternalImages(design) {
+  const elements = design.elements || []
+  const targets = elements.filter(
+    (el) => el.type === 'image' && typeof el.src === 'string' && /^https?:\/\//i.test(el.src)
+  )
+  if (targets.length === 0) return design
+
+  const resolved = await Promise.all(
+    targets.map(async (el) => {
+      try {
+        return [el.id, await fetchAsDataUrl(el.src)]
+      } catch (err) {
+        console.error('Failed to inline coupon image asset:', el.src, err)
+        return null
+      }
+    })
+  )
+  const dataUrlById = new Map(resolved.filter(Boolean))
+  if (dataUrlById.size === 0) return design
+
+  return {
+    ...design,
+    elements: elements.map((el) => (dataUrlById.has(el.id) ? { ...el, src: dataUrlById.get(el.id) } : el)),
+  }
+}
+
+// Renders `design` via VoucherCanvas straight to a PNG data URL, sized to
+// the coupon's true physical dimensions (design.widthMM/heightMM) at
+// EXPORT_DPI. No DOM mounting, no waiting for paint — the SVG markup is
+// generated statically and rasterized by the browser's native decoder.
+// Returns physical size in mm (for PDF page sizing) alongside the image.
+async function rasterizeDesignToPng(design, dpi = EXPORT_DPI) {
+  const safeDesign = await inlineExternalImages(design)
+  const widthMM = safeDesign.widthMM || 1
+  const heightMM = safeDesign.heightMM || 1
+  const pxPerMm = dpi / 25.4
+  const outW = Math.max(1, Math.round(widthMM * pxPerMm))
+  const outH = Math.max(1, Math.round(heightMM * pxPerMm))
+
+  // VoucherCanvas renders width="100%" height="100%" for in-page
+  // embedding; a standalone rasterizable document needs explicit pixel
+  // dimensions instead, plus its own SVG namespace declaration. Simply
+  // prepending new width/height attributes (as an earlier version of this
+  // did) left the original width="100%" height="100%" in place too —
+  // producing a tag with the SAME attribute twice, e.g.
+  // `<svg width="1181" height="591" ... width="100%" height="100%">`.
+  // That's invalid XML (SVG is XML; an attribute can't repeat on one
+  // tag), so the browser's Image decoder silently rejects the whole
+  // document and onerror fires for every single coupon. Strip the
+  // original width/height off the root <svg ...> tag before injecting
+  // the export-sized ones so only one copy of each ever exists.
+  const rawMarkup = ReactDOMServer.renderToStaticMarkup(<VoucherCanvas design={safeDesign} />)
+  const rootSvgTagMatch = rawMarkup.match(/^<svg[^>]*>/)
+  const restOfMarkup = rawMarkup.slice(rootSvgTagMatch ? rootSvgTagMatch[0].length : 0)
+  const cleanedRootTag = (rootSvgTagMatch ? rootSvgTagMatch[0] : '<svg>')
+    .replace(/\swidth="[^"]*"/, '')
+    .replace(/\sheight="[^"]*"/, '')
+    .replace(
+      '<svg ',
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${outW}" height="${outH}" `
+    )
+  const markup = cleanedRootTag + restOfMarkup
+
+  const svgUrl = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml;charset=utf-8' }))
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = () => {
+        // Surface *what* failed to rasterize, not just that it did — a
+        // bare "Failed to rasterize" with no markup/size makes this kind
+        // of error impossible to diagnose after the fact.
+        console.error('SVG failed to rasterize. outW/outH:', outW, outH)
+        console.error('Failing SVG markup:', markup)
+        reject(new Error('Failed to rasterize coupon artwork.'))
+      }
+      image.src = svgUrl
+    })
+
+    const canvas = document.createElement('canvas')
+    canvas.width = outW
+    canvas.height = outH
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, 0, outW, outH)
+    ctx.drawImage(img, 0, 0, outW, outH)
+
+    return { dataUrl: canvas.toDataURL('image/png'), widthMM, heightMM }
+  } finally {
+    URL.revokeObjectURL(svgUrl)
+  }
+}
 
 // Tolerates either a bare array or a { success, data } envelope, same as
 // the rest of the coupon endpoints.
@@ -171,6 +336,89 @@ function rowKey(couponId, idxInGroup) {
   return `${couponId}::${idxInGroup}`
 }
 
+// Opens a plain print window (no PDF, no viewer plugin) containing one
+// rasterized coupon image per page, and triggers the browser's native
+// print dialog directly on it once every image has actually loaded.
+// `items` is [{ name, dataUrl, width, height }]. Each page gets its own
+// named @page rule sized to that coupon's own rendered dimensions (Chrome/
+// Edge/most modern browsers honor per-page @page sizing; browsers that
+// don't will fall back to their default paper size but the content itself
+// still prints correctly). Returns false if the window couldn't be opened
+// (typically a pop-up blocker), so the caller can surface that.
+function openCouponPrintWindow(items) {
+  const printWindow = window.open('', '_blank')
+  if (!printWindow) return false
+
+  const escapeAttr = (s) => String(s ?? '').replace(/"/g, '&quot;')
+
+  const pageSizeRules = items
+    .map((item, idx) => `@page coupon-page-${idx} { size: ${item.width}px ${item.height}px; margin: 0; }`)
+    .join('\n')
+
+  const pagesHtml = items
+    .map(
+      (item, idx) => `
+      <div class="coupon-page" style="page: coupon-page-${idx};">
+        <img src="${item.dataUrl}" width="${item.width}" height="${item.height}" alt="${escapeAttr(item.name)}" />
+      </div>`
+    )
+    .join('')
+
+  printWindow.document.open()
+  printWindow.document.write(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Print coupons</title>
+    <style>
+      @page { margin: 0; }
+      ${pageSizeRules}
+      html, body { margin: 0; padding: 0; background: #FFFFFF; }
+      .coupon-page {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        page-break-after: always;
+        break-after: page;
+      }
+      .coupon-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .coupon-page img { display: block; }
+    </style>
+  </head>
+  <body>${pagesHtml}
+  </body>
+</html>`)
+  printWindow.document.close()
+
+  const triggerPrint = () => {
+    printWindow.focus()
+    printWindow.print()
+  }
+
+  const images = Array.from(printWindow.document.images)
+  if (images.length === 0) {
+    triggerPrint()
+  } else {
+    let loaded = 0
+    images.forEach((img) => {
+      const markLoaded = () => {
+        loaded += 1
+        if (loaded === images.length) triggerPrint()
+      }
+      if (img.complete) markLoaded()
+      else {
+        img.onload = markLoaded
+        img.onerror = markLoaded
+      }
+    })
+  }
+
+  return true
+}
+
 // A checkbox that also drives its native `indeterminate` visual state
 // (some-but-not-all children selected) — plain <input checked> can't
 // express that on its own.
@@ -245,8 +493,8 @@ function CheckCoupon({ onCancel }) {
 
   const clearSelection = () => setSelectedKeys(new Set())
 
-  // Surfaced next to the Download PDF button if artwork couldn't be
-  // prepared for any of the selected rows.
+  // Surfaced next to the Download PDF / Print buttons if artwork couldn't
+  // be prepared for any of the selected rows.
   const [printError, setPrintError] = useState('')
 
   // --- Preview (same pattern as GetCoupon.jsx) --------------------------
@@ -315,19 +563,24 @@ function CheckCoupon({ onCancel }) {
   }
 
   // --- Download the previewed artwork as a PNG ---------------------------
-  const artRef = useRef(null)
+  // The merged design actually being shown in the modal right now — kept
+  // as its own memo (rather than only computed inline inside the JSX
+  // below) so this download handler can rasterize the same thing the
+  // person is looking at without re-deriving it or touching the DOM.
+  const previewMergedDesign = useMemo(() => {
+    if (!previewRow) return null
+    const design = designCache[previewRow.couponId]
+    if (!design) return null
+    return withCodeValue(applyCouponOverrides(design, previewRow), codeValue)
+  }, [previewRow, designCache, codeValue])
+
   const [isDownloading, setIsDownloading] = useState(false)
 
   const handleDownloadPreview = async () => {
-    if (!artRef.current) return
+    if (!previewMergedDesign) return
     setIsDownloading(true)
     try {
-      const canvas = await html2canvas(artRef.current, {
-        backgroundColor: '#FFFFFF',
-        scale: 2, // sharper output than the on-screen size
-        useCORS: true, // template images (medallion art, etc.) may be cross-origin
-      })
-      const dataUrl = canvas.toDataURL('image/png')
+      const { dataUrl } = await rasterizeDesignToPng(previewMergedDesign)
       const fileNameBase = (previewRow?.name || previewRow?.couponUniqueCode || 'coupon')
         .toString()
         .trim()
@@ -426,22 +679,32 @@ function CheckCoupon({ onCancel }) {
   }
 
   // --- Export the selected rows as a PDF of their voucher artwork --------
-  // Instead of opening a browser print dialog, the selected rows' actual
-  // coupon images (the same VoucherCanvas design used in the preview
-  // modal) are rasterized and bundled straight into a downloadable PDF —
-  // one coupon per page. Each page's dimensions are taken from that
-  // coupon's own rendered size (measured via getBoundingClientRect on its
-  // off-screen node), so the PDF page is exactly the shape of the
-  // template — not a fixed A4/Letter sheet with the artwork centered or
-  // cropped inside it. Different templates in the same export can each
-  // have their own page size.
-  const [isPreparingPdf, setIsPreparingPdf] = useState(false)
-  // Queue of { key, name, design } rendered off-screen so html2canvas has
-  // real DOM nodes to rasterize. Cleared once the PDF has been generated.
-  const [printItems, setPrintItems] = useState([])
-  const printNodeRefs = useRef({})
+  // Instead of the old html2canvas-based pipeline (mount off-screen DOM,
+  // wait for paint, walk the tree node-by-node), the selected rows' actual
+  // coupon images are produced by rasterizeDesignToPng — direct SVG
+  // serialization + native browser rasterization, no DOM mount needed at
+  // all. Fetching each coupon's artwork (GetCouponUi) and rasterizing it
+  // both happen inside the SAME concurrent worker pool
+  // (RASTERIZE_CONCURRENCY in flight at once) instead of one big serial
+  // fetch loop followed by a separate rasterize phase — that merge is
+  // what removes the "174 sequential network round-trips before anything
+  // else can start" bottleneck.
+  //
+  // Each page is sized to that coupon's own true physical dimensions
+  // (design.widthMM/heightMM), so a mixed selection of differently-sized
+  // templates still gets one correctly-sized page per coupon. The SAME
+  // rasterize step backs both buttons below — "Download PDF" bundles the
+  // images into a PDF and saves it; "Print" skips the PDF entirely and
+  // opens a plain print window with the images, printing it directly —
+  // they only diverge after rasterization.
+  //
+  // activePdfAction tracks which of the two actions is currently running
+  // (or null when idle) so both buttons can be disabled together, while
+  // each button's own spinner only lights up for its own action.
+  const [activePdfAction, setActivePdfAction] = useState(null) // null | 'download' | 'print'
+  const isPreparingPdf = activePdfAction !== null
 
-  const handleDownloadSelectedPdf = async () => {
+  const runSelectedExport = async (action) => {
     const selectedRows = []
     groupedRows.forEach((group) => {
       group.rows.forEach((row, idx) => {
@@ -451,19 +714,20 @@ function CheckCoupon({ onCancel }) {
     if (selectedRows.length === 0) return
 
     setPrintError('')
-    setIsPreparingPdf(true)
+    setActivePdfAction(action)
 
     try {
       // Local copy so repeated coupon ids within the selection (multiple
       // assignment rows for the same coupon) only fetch artwork once, and
-      // so we're not relying on React state updates landing between awaits.
+      // so we're not relying on React state updates landing between
+      // concurrent workers. Plain-object read/write here is fine even
+      // under concurrency: a duplicate re-fetch of the same couponId from
+      // two workers racing is wasted work, not a correctness bug.
       const localDesignCache = { ...designCache }
-      const items = []
 
-      for (let i = 0; i < selectedRows.length; i++) {
-        const row = selectedRows[i]
+      const results = await mapWithConcurrency(selectedRows, RASTERIZE_CONCURRENCY, async (row, i) => {
         const preview = extractPreviewFields(row)
-        if (preview.couponId == null || preview.templateId == null) continue
+        if (preview.couponId == null || preview.templateId == null) return null
 
         let design = localDesignCache[preview.couponId]
         if (!design) {
@@ -472,125 +736,87 @@ function CheckCoupon({ onCancel }) {
             localDesignCache[preview.couponId] = design
           } catch (err) {
             console.error('Failed to load artwork for coupon', preview.couponId, err)
-            continue // skip rows whose artwork can't be loaded, export the rest
+            return null // skip rows whose artwork can't be loaded, export the rest
           }
         }
 
         const overridden = applyCouponOverrides(design, preview)
         const codeValueForRow = getStoredCodeValue(preview.couponId, preview.couponUniqueCode)
         const merged = withCodeValue(overridden, codeValueForRow)
+        const name = preview.name || preview.couponUniqueCode || `Coupon ${preview.couponId}`
 
-        items.push({
-          key: `pdf-${rowKey(preview.couponId, i)}`,
-          name: preview.name || preview.couponUniqueCode || `Coupon ${preview.couponId}`,
-          design: merged,
-        })
-      }
+        try {
+          const { dataUrl, widthMM, heightMM } = await rasterizeDesignToPng(merged)
+          return { name, dataUrl, widthMM, heightMM }
+        } catch (err) {
+          console.error('Failed to rasterize coupon:', rowKey(preview.couponId, i), err)
+          return null
+        }
+      })
 
       // Fold any newly-fetched designs back into the shared cache so the
       // preview modal doesn't have to re-fetch them later.
       setDesignCache((cur) => ({ ...cur, ...localDesignCache }))
 
-      if (items.length === 0) {
-        setPrintError("Couldn't load artwork for the selected coupons.")
-        setIsPreparingPdf(false)
+      const rasterized = results.filter(Boolean)
+
+      if (rasterized.length === 0) {
+        setPrintError('Could not prepare the selected coupons.')
+        setActivePdfAction(null)
         return
       }
 
-      // Rendering + rasterizing + PDF assembly happens in the effect below
-      // once these off-screen nodes have actually painted.
-      setPrintItems(items)
-    } catch (err) {
-      console.error('Failed to prepare coupons for PDF export:', err)
-      setPrintError('Could not prepare the selected coupons for PDF export.')
-      setIsPreparingPdf(false)
-    }
-  }
-
-  // Once printItems are queued, wait a couple of frames for the off-screen
-  // VoucherCanvas nodes (and any images inside them) to paint, rasterize
-  // each one, then assemble a PDF — one page per coupon, each page sized
-  // to that coupon's own rendered dimensions — and trigger its download.
-  useEffect(() => {
-    if (printItems.length === 0) return
-    let cancelled = false
-
-    const run = async () => {
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-
-      let pdf = null
-
-      for (const item of printItems) {
-        const node = printNodeRefs.current[item.key]
-        if (!node) continue
-        try {
-          // The node's actual rendered CSS-pixel size — this becomes the
-          // PDF page's dimensions, so the page shape always matches the
-          // template rather than a fixed paper size.
-          const rect = node.getBoundingClientRect()
-          const pageWidth = rect.width
-          const pageHeight = rect.height
-          if (!pageWidth || !pageHeight) continue
-
-          const canvas = await html2canvas(node, {
-            backgroundColor: '#FFFFFF',
-            scale: 2, // rasterize at higher resolution for a crisp printed/zoomed result
-            useCORS: true,
-          })
-          const dataUrl = canvas.toDataURL('image/png')
-          const orientation = pageWidth >= pageHeight ? 'landscape' : 'portrait'
-
+      if (action === 'print') {
+        // The print window sizes pages via CSS px (@page { size }), so
+        // convert each coupon's true mm dimensions to px at the standard
+        // 96px/inch CSS reference, independent of the raster resolution.
+        const printItems = rasterized.map(({ name, dataUrl, widthMM, heightMM }) => ({
+          name,
+          dataUrl,
+          width: Math.round((widthMM * 96) / 25.4),
+          height: Math.round((heightMM * 96) / 25.4),
+        }))
+        const opened = openCouponPrintWindow(printItems)
+        if (!opened) {
+          setPrintError('Could not open the print window. Please allow pop-ups and try again.')
+        }
+      } else {
+        let pdf = null
+        rasterized.forEach(({ dataUrl, widthMM, heightMM }) => {
+          const orientation = widthMM >= heightMM ? 'landscape' : 'portrait'
           if (!pdf) {
             // First page also defines the jsPDF document's initial size.
-            pdf = new jsPDF({
-              orientation,
-              unit: 'px',
-              format: [pageWidth, pageHeight],
-              hotfixes: ['px_scaling'],
-            })
+            // unit: 'mm' + the coupon's true physical size means the PDF
+            // page is exactly the shape and size of the printed coupon.
+            pdf = new jsPDF({ orientation, unit: 'mm', format: [widthMM, heightMM] })
           } else {
             // Each subsequent page gets its own [width, height], so a
             // mixed selection of differently-sized templates still gets
             // one correctly-sized page per coupon.
-            pdf.addPage([pageWidth, pageHeight], orientation)
+            pdf.addPage([widthMM, heightMM], orientation)
           }
+          // Image fills the page exactly, at its full mm size — crispness
+          // comes from the EXPORT_DPI resolution baked into the PNG, not
+          // from the page's own size.
+          pdf.addImage(dataUrl, 'PNG', 0, 0, widthMM, heightMM)
+        })
 
-          // Image is drawn to fill the page exactly, since the page was
-          // sized to match it (the higher-resolution canvas is simply
-          // downscaled to fit — quality comes from the scale:2 capture,
-          // not from the page size).
-          pdf.addImage(dataUrl, 'PNG', 0, 0, pageWidth, pageHeight)
-        } catch (err) {
-          console.error('Failed to rasterize coupon for PDF:', item.key, err)
-        }
+        const fileName =
+          rasterized.length === 1
+            ? `${(rasterized[0].name || 'coupon').toString().trim().replace(/\s+/g, '_')}.pdf`
+            : `coupons_${new Date().toISOString().slice(0, 10)}.pdf`
+        pdf.save(fileName)
       }
-
-      if (cancelled) return
-
-      if (!pdf) {
-        setPrintError('Could not prepare the selected coupons for PDF export.')
-        setPrintItems([])
-        setIsPreparingPdf(false)
-        return
-      }
-
-      const fileName =
-        printItems.length === 1
-          ? `${(printItems[0].name || 'coupon').toString().trim().replace(/\s+/g, '_')}.pdf`
-          : `coupons_${new Date().toISOString().slice(0, 10)}.pdf`
-
-      pdf.save(fileName)
-
-      setPrintItems([])
-      setIsPreparingPdf(false)
+    } catch (err) {
+      console.error('Failed to prepare coupons for export:', err)
+      setPrintError('Could not prepare the selected coupons for export.')
+    } finally {
+      setActivePdfAction(null)
     }
+  }
 
-    run()
-
-    return () => {
-      cancelled = true
-    }
-  }, [printItems])
+  const handleDownloadSelectedPdf = () => runSelectedExport('download')
+  const handlePrintSelectedPdf = () => runSelectedExport('print')
 
   return (
     <div className="gc-wrap">
@@ -612,12 +838,26 @@ function CheckCoupon({ onCancel }) {
           disabled={selectedCount === 0 || isPreparingPdf}
           title={selectedCount === 0 ? 'Select coupons to download' : `Download ${selectedCount} selected as PDF`}
         >
-          {isPreparingPdf ? (
+          {activePdfAction === 'download' ? (
             <Loader2 size={16} strokeWidth={2.25} className="gc-spin" />
           ) : (
             <Download size={16} strokeWidth={2.25} />
           )}
-          {isPreparingPdf ? 'Preparing…' : `Download PDF${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
+          {activePdfAction === 'download' ? 'Preparing…' : `Download PDF${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
+        </button>
+        <button
+          type="button"
+          className="cc-print-button"
+          onClick={handlePrintSelectedPdf}
+          disabled={selectedCount === 0 || isPreparingPdf}
+          title={selectedCount === 0 ? 'Select coupons to print' : `Print ${selectedCount} selected`}
+        >
+          {activePdfAction === 'print' ? (
+            <Loader2 size={16} strokeWidth={2.25} className="gc-spin" />
+          ) : (
+            <Printer size={16} strokeWidth={2.25} />
+          )}
+          {activePdfAction === 'print' ? 'Preparing…' : `Print${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
         </button>
         {selectedCount > 0 && !isPreparingPdf && (
           <button type="button" className="cc-clear-button" onClick={clearSelection}>
@@ -806,9 +1046,6 @@ function CheckCoupon({ onCancel }) {
                 qrTextVisible && 'code text',
               ].filter(Boolean)
 
-              const overridden = applyCouponOverrides(design, previewRow)
-              const merged = withCodeValue(overridden, codeValue)
-
               return (
                 <>
                   {anyCodeVisible && (
@@ -825,34 +1062,13 @@ function CheckCoupon({ onCancel }) {
                       />
                     </div>
                   )}
-                  <div className="gc-art" ref={artRef}>
-                    <VoucherCanvas design={merged} />
+                  <div className="gc-art">
+                    <VoucherCanvas design={previewMergedDesign || design} />
                   </div>
                 </>
               )
             })()}
           </div>
-        </div>
-      )}
-
-      {/* Off-screen render target for the PDF export flow: each selected
-          coupon's design is mounted here (never visible to the user) so
-          html2canvas has a real DOM node per coupon to rasterize, and so
-          getBoundingClientRect() can measure its true rendered size for
-          the PDF page dimensions. Cleared as soon as the PDF is generated. */}
-      {printItems.length > 0 && (
-        <div aria-hidden="true" style={{ position: 'fixed', top: 0, left: -99999, pointerEvents: 'none' }}>
-          {printItems.map((item) => (
-            <div
-              key={item.key}
-              ref={(el) => {
-                printNodeRefs.current[item.key] = el
-              }}
-              className="gc-art"
-            >
-              <VoucherCanvas design={item.design} />
-            </div>
-          ))}
         </div>
       )}
 

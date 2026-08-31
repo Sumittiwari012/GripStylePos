@@ -1,49 +1,69 @@
-import React, { useEffect, useRef } from 'react'
+import React from 'react'
 import JsBarcode from 'jsbarcode'
 
+// -----------------------------------------------------------------------
+// Barcode rendering — CODE128 bars via jsbarcode's low-level encoder.
+//
+// IMPORTANT: the previous version called the public JsBarcode(svgNode, ...)
+// API, which draws bars by directly mutating a REAL DOM <svg> node (and
+// then reads it back via getBBox()). That only works when the component
+// is actually mounted in a browser. CheckCoupon.jsx's export pipeline
+// renders VoucherCanvas via ReactDOMServer.renderToStaticMarkup, which
+// never creates real DOM nodes and never runs effects/refs — so
+// ref.current was always null there, JsBarcode never actually drew
+// anything, and the exported artwork silently had no barcode at all
+// (while the live on-screen preview, which does mount for real, looked
+// fine).
+//
+// The fix: JsBarcode.getModule(format) returns the raw Encoder class
+// used internally, completely independent of any DOM. `encoder.encode()`
+// returns { data, text } where `data` is a binary string (one character
+// per module: '1' = bar, '0' = space) — a pure, synchronous computation.
+// We turn that directly into scaled <rect> elements ourselves, mirroring
+// exactly what JsBarcode's own SVGRenderer does internally (each
+// consecutive run of '1's becomes one bar), just without ever touching
+// the DOM. This renders identically whether mounted live or serialized
+// statically for export — same as QrCells.
 export function BarcodeCells({ value, x, y, width, height, color }) {
-  const ref = useRef(null)
-
-  useEffect(() => {
-    if (!ref.current) return
-    try {
-      // Clear any previous render + attrs so getBBox below reflects
-      // only this call's bars, not a stale viewBox from last time.
-      while (ref.current.firstChild) ref.current.removeChild(ref.current.firstChild)
-      ref.current.removeAttribute('viewBox')
-
-      JsBarcode(ref.current, value || ' ', {
-        format: 'CODE128',
-        width: 2,
-        height: 100,
-        displayValue: false,
-        margin: 0,
-        background: 'transparent',
-        lineColor: color || '#000000',
-      })
-
-      // Don't trust the width/height JsBarcode writes onto the root
-      // <svg> — it can reserve extra space beyond the actual bars
-      // (a known quirk, even with margin:0 / displayValue:false).
-      // getBBox() gives the true ink extent of what's drawn, so
-      // scaling from that crops out the dead whitespace instead of
-      // stretching it into our box alongside the real bars.
-      const bbox = ref.current.getBBox()
-      if (bbox.width && bbox.height) {
-        ref.current.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`)
-      }
-      ref.current.setAttribute('preserveAspectRatio', 'none')
-      ref.current.setAttribute('x', x)
-      ref.current.setAttribute('y', y)
-      ref.current.setAttribute('width', width)
-      ref.current.setAttribute('height', height)
-    } catch (e) {
-      // Invalid value for the chosen format — leave it empty rather
-      // than crashing the canvas.
+  let data = ''
+  try {
+    const Encoder = JsBarcode.getModule('CODE128')
+    const encoder = new Encoder(value || ' ', {})
+    if (encoder.valid()) {
+      const encoded = encoder.encode()
+      // encode() can return a single {data, text} or (for some formats)
+      // an array of them — CODE128 always returns a single object, but
+      // guard for the array shape just in case a future format/value
+      // combination triggers it, concatenating all module strings in
+      // order same as JsBarcode's own linearizeEncodings step would.
+      data = Array.isArray(encoded) ? encoded.map((e) => e.data).join('') : encoded.data
     }
-  }, [value, x, y, width, height, color])
+  } catch (e) {
+    // Invalid value for the chosen format — render nothing rather than
+    // crashing the canvas, same behavior as the previous implementation.
+    data = ''
+  }
 
-  return <svg ref={ref} x={x} y={y} width={width} height={height} />
+  if (!data) return null
+
+  const totalModules = data.length
+  const fillColor = color || '#000000'
+  const bars = []
+  let runStart = -1
+
+  for (let i = 0; i <= totalModules; i++) {
+    const isBar = i < totalModules && data[i] === '1'
+    if (isBar && runStart === -1) {
+      runStart = i
+    } else if (!isBar && runStart !== -1) {
+      const barX = x + (runStart / totalModules) * width
+      const barWidth = ((i - runStart) / totalModules) * width
+      bars.push(<rect key={runStart} x={barX} y={y} width={barWidth} height={height} fill={fillColor} />)
+      runStart = -1
+    }
+  }
+
+  return <g>{bars}</g>
 }
 
 export default BarcodeCells
