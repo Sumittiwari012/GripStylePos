@@ -1,543 +1,751 @@
-// CategorySalesDashboard.jsx
-//
-// Talks to SalesController:
-//   GET /api/Sales/getCategory        -> [{ categorId, categoryName }]
-//   GET /api/Sales/getCategoryPdts?categoryId=... ->
-//       [{ id, productName, barcode, mrp, retailSalePrice, availableQuantity,
-//          sales: [{ invoiceNumber, purchaseDate, soldQuantity, salePrice, isReturned }],
-//          totalSoldQuantity, totalReturnedQuantity }]
-//
-// npm install recharts (if not already present)
 import './CategorySalesDashBoard.css'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
+
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
 } from 'recharts'
-import { RefreshCw, Loader2, TicketX, ChevronDown, ChevronRight } from 'lucide-react'
 
-const API_BASE = 'https://gripstyleapi.runasp.net'
+const API_URL =
+  'https://gripstyleapi.runasp.net/api/Sales/getInvoiceTrendByCategories'
 
-// Cycled through in order as categories are selected — distinct enough to
-// stay readable when several lines overlap on the same chart.
-const PALETTE = [
-  '#B9762E', '#3B6EEA', '#1FA37A', '#D64545', '#8A5CD6',
-  '#C99A1E', '#2FA6C9', '#E0578C', '#5C8A3A', '#7A5540',
+const CHART_TYPES = [
+  { id: 'line', label: 'Line' },
+  { id: 'bar', label: 'Bar' },
+  { id: 'horizontalBar', label: 'Horizontal Bar' },
 ]
 
-function colorForIndex(i) {
-  return PALETTE[i % PALETTE.length]
+const formatCount = (value) =>
+  new Intl.NumberFormat('en-IN').format(value)
+
+
+/* =========================================================
+   FIND A GOOD AXIS INTERVAL
+   ========================================================= */
+
+const getTickInterval = (max) => {
+  if (max <= 7) return 1
+  if (max <= 15) return 2
+  if (max <= 30) return 5
+  if (max <= 60) return 5
+  if (max <= 100) return 10
+  if (max <= 200) return 20
+  if (max <= 500) return 50
+  if (max <= 1000) return 100
+
+  const magnitude = Math.pow(
+    10,
+    Math.floor(Math.log10(max))
+  )
+
+  return magnitude
 }
 
-// "2026-08-15T..." -> "2026-08-15", used as the x-axis bucket (one point
-// per day) so day-to-day ups and downs are visible instead of being
-// smoothed away into a monthly trend.
-function dayKey(dateStr) {
-  const d = new Date(dateStr)
-  if (Number.isNaN(d.getTime())) return null
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
 
-function dayLabel(key) {
-  const [y, m, d] = key.split('-').map(Number)
-  const date = new Date(y, m - 1, d)
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
+/* =========================================================
+   COMPONENT
+   ========================================================= */
 
-// Rolls up one category's product list (each carrying its own `sales`
-// array) into { dayKey: totalForThatDay }, using either sold quantity
-// or revenue (salePrice * soldQuantity) as the metric. Returned sales are
-// excluded from both — mirrors the backend's own totalSoldQuantity
-// definition (a returned sale isn't really "sold" from inventory's
-// perspective).
-function aggregateByDay(products, metric) {
-  const byDay = {}
-  products.forEach((product) => {
-    ;(product.sales || []).forEach((sale) => {
-      if (sale.isReturned) return
-      const key = dayKey(sale.purchaseDate)
-      if (!key) return
-      const value = metric === 'revenue' ? sale.salePrice * sale.soldQuantity : sale.soldQuantity
-      byDay[key] = (byDay[key] || 0) + value
-    })
+function CategorySalesDashboard({
+  onRangeChange,
+}) {
+  const [dateRange, setDateRange] = useState({
+    from: '',
+    to: '',
   })
-  return byDay
-}
 
-// Merges each selected category's { dayKey: value } map into a single
-// array recharts can consume directly: one row per day the data actually
-// spans, one field per category. Missing days for a given category are
-// filled with 0 rather than left undefined, so its area doesn't gap. The
-// range is whatever the sales data covers — no artificial clamping to a
-// fixed window like "Jul–Aug".
-function buildChartData(categoryAggregates) {
-  const allDays = new Set()
-  categoryAggregates.forEach(({ byDay }) => {
-    Object.keys(byDay).forEach((d) => allDays.add(d))
-  })
-  if (allDays.size === 0) return []
+  const [salesData, setSalesData] =
+    useState([])
 
-  const sortedDays = Array.from(allDays).sort()
-  const [firstY, firstM, firstD] = sortedDays[0].split('-').map(Number)
-  const [lastY, lastM, lastD] = sortedDays[sortedDays.length - 1].split('-').map(Number)
-  const cursor = new Date(firstY, firstM - 1, firstD)
-  const end = new Date(lastY, lastM - 1, lastD)
+  const [status, setStatus] =
+    useState('idle')
 
-  // Walk every calendar day from the earliest to the latest sale date —
-  // not just the days that had a sale — so quiet days show up as 0 on the
-  // chart/table instead of being silently skipped.
-  const fullRangeDays = []
-  while (cursor <= end) {
-    const y = cursor.getFullYear()
-    const m = String(cursor.getMonth() + 1).padStart(2, '0')
-    const d = String(cursor.getDate()).padStart(2, '0')
-    fullRangeDays.push(`${y}-${m}-${d}`)
-    cursor.setDate(cursor.getDate() + 1)
+  const [errorMessage, setErrorMessage] =
+    useState('')
+
+  const [chartType, setChartType] =
+    useState('line')
+
+
+  /* =======================================================
+     DATE RANGE
+     ======================================================= */
+
+  const updateRange = (nextRange) => {
+    setDateRange(nextRange)
+
+    onRangeChange?.(nextRange)
   }
 
-  return fullRangeDays.map((d) => {
-    const row = { day: d, dayLabel: dayLabel(d) }
-    categoryAggregates.forEach(({ categoryName, byDay }) => {
-      row[categoryName] = byDay[d] || 0
+
+  const clearDateRange = () => {
+    updateRange({
+      from: '',
+      to: '',
     })
-    return row
-  })
-}
+  }
 
-function CategorySalesDashboard() {
-  const [categories, setCategories] = useState([])
-  const [loadingCategories, setLoadingCategories] = useState(true)
-  const [categoriesError, setCategoriesError] = useState(null)
 
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => new Set())
-
-  // categoryId -> { products, loading, error }
-  const [categoryData, setCategoryData] = useState({})
-
-  const [metric, setMetric] = useState('quantity') // 'quantity' | 'revenue'
-  const [expandedCategoryIds, setExpandedCategoryIds] = useState(() => new Set())
-
-  const loadCategories = useCallback(async () => {
-    setLoadingCategories(true)
-    setCategoriesError(null)
-    try {
-      const res = await fetch(`${API_BASE}/api/Sales/getCategory`)
-      if (!res.ok) throw new Error(`Could not load categories (${res.status}).`)
-      const json = await res.json()
-      setCategories(Array.isArray(json) ? json : [])
-    } catch (err) {
-      setCategoriesError(err.message || 'Something went wrong while loading categories.')
-    } finally {
-      setLoadingCategories(false)
-    }
-  }, [])
+  /* =======================================================
+     FETCH DATA
+     ======================================================= */
 
   useEffect(() => {
-    loadCategories()
-  }, [loadCategories])
+    if (
+      !dateRange.from ||
+      !dateRange.to
+    ) {
+      setSalesData([])
+      setStatus('idle')
+      setErrorMessage('')
+      return
+    }
 
-  // Fetches a category's products/sales exactly once, the first time it's
-  // selected — cached in categoryData so toggling it off and back on
-  // doesn't re-fetch.
-  const ensureCategoryData = useCallback(
-    async (categoryId) => {
-      setCategoryData((cur) => {
-        if (cur[categoryId]) return cur // already loaded or loading
-        return { ...cur, [categoryId]: { products: [], loading: true, error: null } }
-      })
+    const controller =
+      new AbortController()
+
+    const fetchSales = async () => {
+      setStatus('loading')
+      setErrorMessage('')
 
       try {
-        const res = await fetch(`${API_BASE}/api/Sales/getCategoryPdts?categoryId=${categoryId}`)
-        if (!res.ok) throw new Error(`Could not load products (${res.status}).`)
-        const products = await res.json()
-        setCategoryData((cur) => ({
-          ...cur,
-          [categoryId]: { products: Array.isArray(products) ? products : [], loading: false, error: null },
-        }))
-      } catch (err) {
-        setCategoryData((cur) => ({
-          ...cur,
-          [categoryId]: { products: [], loading: false, error: err.message || 'Failed to load.' },
-        }))
-      }
-    },
-    []
-  )
+        const params =
+          new URLSearchParams({
+            StartDate: dateRange.from,
+            EndDate: dateRange.to,
+          })
 
-  const toggleCategory = (categoryId) => {
-    setSelectedCategoryIds((cur) => {
-      const next = new Set(cur)
-      if (next.has(categoryId)) {
-        next.delete(categoryId)
-      } else {
-        next.add(categoryId)
-        // Fire the fetch when a category is newly checked, not on every
-        // render — categoryData's own "already loaded" guard above makes
-        // this safe to call repeatedly regardless.
-        ensureCategoryData(categoryId)
-      }
-      return next
-    })
-  }
+        const response =
+          await fetch(
+            `${API_URL}?${params.toString()}`,
+            {
+              signal:
+                controller.signal,
+            }
+          )
 
-  const selectedCategories = useMemo(
-    () => categories.filter((c) => selectedCategoryIds.has(c.categorId)),
-    [categories, selectedCategoryIds]
-  )
+        if (!response.ok) {
+          const body =
+            await response
+              .json()
+              .catch(() => null)
 
-  const anySelectedStillLoading = selectedCategories.some(
-    (c) => categoryData[c.categorId]?.loading
-  )
-
-  // The full day-by-day series for whatever categories/metric are
-  // selected, spanning every calendar day from the earliest to the latest
-  // sale — unfiltered by any date range the user picks.
-  const fullChartData = useMemo(() => {
-    const aggregates = selectedCategories
-      .map((c) => {
-        const entry = categoryData[c.categorId]
-        if (!entry || entry.loading || entry.error) return null
-        return {
-          categoryName: c.categoryName,
-          byDay: aggregateByDay(entry.products, metric),
+          throw new Error(
+            body?.message ||
+              `Request failed (${response.status})`
+          )
         }
-      })
-      .filter(Boolean)
-    return buildChartData(aggregates)
-  }, [selectedCategories, categoryData, metric])
 
-  // Bounds of the actual data, used as min/max on the date pickers so the
-  // user can't pick a range outside what's available.
-  const dataMinDay = fullChartData[0]?.day ?? ''
-  const dataMaxDay = fullChartData[fullChartData.length - 1]?.day ?? ''
+        const data =
+          await response.json()
 
-  // 'YYYY-MM-DD' strings, or '' meaning "no lower/upper bound picked yet"
-  // — an empty from/to falls back to the full data range.
-  const [dateRange, setDateRange] = useState({ from: '', to: '' })
+        const formattedData =
+          Array.isArray(data)
+            ? data
+                .map((item) => ({
+                  categoryId:
+                    item.categoryId ??
+                    item.CategoryId,
 
-  // Reset any selected range back to "show everything" whenever the
-  // selected categories or metric change the underlying data, so a stale
-  // range from a previous category selection doesn't silently hide data.
-  useEffect(() => {
-    setDateRange({ from: '', to: '' })
-  }, [selectedCategoryIds, metric])
+                  categoryName:
+                    item.categoryName ??
+                    item.CategoryName,
 
-  const chartData = useMemo(() => {
-    if (!dateRange.from && !dateRange.to) return fullChartData
-    return fullChartData.filter((row) => {
-      if (dateRange.from && row.day < dateRange.from) return false
-      if (dateRange.to && row.day > dateRange.to) return false
-      return true
-    })
-  }, [fullChartData, dateRange])
+                  count: Number(
+                    item.count ??
+                      item.Count ??
+                      0
+                  ),
+                }))
+                .filter(
+                  (item) =>
+                    item.categoryName &&
+                    item.count >= 0
+                )
+            : []
 
-  const clearDateRange = () => setDateRange({ from: '', to: '' })
+        /*
+         * Highest count first.
+         */
+        formattedData.sort(
+          (a, b) =>
+            b.count - a.count
+        )
 
-  const toggleExpanded = (categoryId) => {
-    setExpandedCategoryIds((cur) => {
-      const next = new Set(cur)
-      if (next.has(categoryId)) next.delete(categoryId)
-      else next.add(categoryId)
-      return next
-    })
-  }
+        setSalesData(
+          formattedData
+        )
 
-  const metricLabel = metric === 'revenue' ? 'Revenue (₹)' : 'Units Sold'
-  const formatMetricValue = (v) =>
-    metric === 'revenue' ? `₹${Number(v).toFixed(2)}` : String(v)
+        setStatus('done')
+      } catch (error) {
+        if (
+          error.name ===
+          'AbortError'
+        ) {
+          return
+        }
+
+        setErrorMessage(
+          error.message ||
+            'Something went wrong while loading category sales.'
+        )
+
+        setStatus('error')
+      }
+    }
+
+    fetchSales()
+
+    return () => {
+      controller.abort()
+    }
+  }, [
+    dateRange.from,
+    dateRange.to,
+  ])
+
+
+  /* =======================================================
+     TOTAL
+     ======================================================= */
+
+  const grandTotal =
+    salesData.reduce(
+      (total, item) =>
+        total + item.count,
+      0
+    )
+
+
+  /* =======================================================
+     Y AXIS CALCULATIONS
+     ======================================================= */
+
+  const maxCount = Math.max(
+    ...salesData.map(
+      (item) => item.count
+    ),
+    0
+  )
+
+  /*
+   * Automatically select a suitable
+   * distance between Y-axis ticks.
+   *
+   * Example:
+   *
+   * max = 6   -> 1
+   * max = 12  -> 2
+   * max = 27  -> 5
+   * max = 39  -> 5
+   * max = 85  -> 10
+   * max = 180 -> 20
+   */
+  const tickInterval =
+    getTickInterval(maxCount)
+
+
+  /*
+   * Round the maximum axis value
+   * up to the next interval.
+   *
+   * Example:
+   *
+   * maxCount = 39
+   * interval = 5
+   *
+   * axisMax = 40
+   */
+  const axisMax =
+    maxCount === 0
+      ? 1
+      : Math.ceil(
+          maxCount /
+            tickInterval
+        ) * tickInterval
+
+
+  /*
+   * Generate the actual ticks.
+   *
+   * Example:
+   *
+   * interval = 5
+   * axisMax = 40
+   *
+   * [0, 5, 10, 15, 20, 25, 30, 35, 40]
+   */
+  const countTicks =
+    Array.from(
+      {
+        length:
+          Math.floor(
+            axisMax /
+              tickInterval
+          ) + 1,
+      },
+      (_, index) =>
+        index * tickInterval
+    )
+
 
   return (
     <div className="csd-wrap">
-      <div className="csd-header">
-        <h2>Category Sales</h2>
-        <div className="csd-metric-toggle">
+
+      {/* =================================================
+          DATE FILTER
+      ================================================= */}
+
+      <div className="csd-date-filter">
+
+        <label className="csd-date-filter-field">
+          <span>From</span>
+
+          <input
+            type="date"
+            value={dateRange.from}
+            max={
+              dateRange.to ||
+              undefined
+            }
+            onChange={(event) => {
+              updateRange({
+                ...dateRange,
+                from:
+                  event.target.value,
+              })
+            }}
+          />
+        </label>
+
+
+        <label className="csd-date-filter-field">
+          <span>To</span>
+
+          <input
+            type="date"
+            value={dateRange.to}
+            min={
+              dateRange.from ||
+              undefined
+            }
+            onChange={(event) => {
+              updateRange({
+                ...dateRange,
+                to:
+                  event.target.value,
+              })
+            }}
+          />
+        </label>
+
+
+        {(dateRange.from ||
+          dateRange.to) && (
           <button
             type="button"
-            className={metric === 'quantity' ? 'csd-metric-btn active' : 'csd-metric-btn'}
-            onClick={() => setMetric('quantity')}
+            className="csd-date-filter-clear"
+            onClick={
+              clearDateRange
+            }
           >
-            Units Sold
+            Reset range
           </button>
-          <button
-            type="button"
-            className={metric === 'revenue' ? 'csd-metric-btn active' : 'csd-metric-btn'}
-            onClick={() => setMetric('revenue')}
-          >
-            Revenue
-          </button>
-        </div>
-        <button type="button" className="csd-refresh" onClick={loadCategories} disabled={loadingCategories}>
-          <RefreshCw size={16} strokeWidth={2.25} className={loadingCategories ? 'csd-spin' : ''} />
-          Refresh categories
-        </button>
+        )}
+
       </div>
 
-      {loadingCategories && (
-        <div className="csd-loading">
-          <Loader2 size={20} strokeWidth={2.25} className="csd-spin" />
-          <span>Loading categories…</span>
-        </div>
-      )}
 
-      {!loadingCategories && categoriesError && (
-        <div className="csd-empty">
-          <TicketX size={28} strokeWidth={1.75} color="#B9762E" />
-          <p className="csd-empty__title">Couldn't load categories</p>
-          <p className="csd-empty__sub">{categoriesError}</p>
-          <button type="button" className="csd-retry" onClick={loadCategories}>
-            Try again
-          </button>
-        </div>
-      )}
+      {/* =================================================
+          CHART TABS
+      ================================================= */}
 
-      {!loadingCategories && !categoriesError && (
-        <>
-          {/* --- Category multi-select chips --- */}
-          <div className="csd-chip-row">
-            {categories.map((c, i) => {
-              const isSelected = selectedCategoryIds.has(c.categorId)
-              return (
+      {status === 'done' &&
+        salesData.length > 0 && (
+          <div
+            className="csd-chart-tabs"
+            role="tablist"
+          >
+
+            {CHART_TYPES.map(
+              (chart) => (
                 <button
-                  key={c.categorId}
+                  key={chart.id}
                   type="button"
-                  className={`csd-chip ${isSelected ? 'csd-chip--active' : ''}`}
-                  style={isSelected ? { borderColor: colorForIndex(i), background: `${colorForIndex(i)}1A`, color: colorForIndex(i) } : undefined}
-                  onClick={() => toggleCategory(c.categorId)}
+                  role="tab"
+                  aria-selected={
+                    chartType ===
+                    chart.id
+                  }
+                  className={`csd-chart-tab ${
+                    chartType ===
+                    chart.id
+                      ? 'csd-chart-tab-active'
+                      : ''
+                  }`}
+                  onClick={() =>
+                    setChartType(
+                      chart.id
+                    )
+                  }
                 >
-                  <span
-                    className="csd-chip-dot"
-                    style={{ background: isSelected ? colorForIndex(i) : '#D8D4E4' }}
-                  />
-                  {c.categoryName}
+                  {chart.label}
                 </button>
               )
-            })}
+            )}
+
           </div>
+        )}
 
-          {/* --- Chart --- */}
-          {selectedCategories.length === 0 && (
-            <div className="csd-empty">
-              <p className="csd-empty__title">No categories selected</p>
-              <p className="csd-empty__sub">Pick one or more categories above to see their sales trend.</p>
+
+      {/* =================================================
+          CHART AREA
+      ================================================= */}
+
+      <div className="csd-chart-area">
+
+        {status === 'idle' && (
+          <p className="csd-hint">
+            Pick a from and to date
+            to see sales by category.
+          </p>
+        )}
+
+
+        {status === 'loading' && (
+          <p className="csd-hint">
+            Loading category sales…
+          </p>
+        )}
+
+
+        {status === 'error' && (
+          <p
+            className="csd-error"
+            role="alert"
+          >
+            {errorMessage}
+          </p>
+        )}
+
+
+        {status === 'done' &&
+          salesData.length === 0 && (
+            <p className="csd-hint">
+              No sales found for
+              that range.
+            </p>
+          )}
+
+
+        {/* =================================================
+            LINE CHART
+        ================================================= */}
+
+        {status === 'done' &&
+          salesData.length > 0 &&
+          chartType === 'line' && (
+
+            <div className="csd-rechart">
+
+              <ResponsiveContainer
+                width="100%"
+                height={450}
+              >
+
+                <LineChart
+                  data={salesData}
+                  margin={{
+                    top: 20,
+                    right: 30,
+                    left: 30,
+                    bottom: 100,
+                  }}
+                >
+
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                  />
+
+                  <XAxis
+                    dataKey="categoryName"
+                    angle={-35}
+                    textAnchor="end"
+                    interval={0}
+                    height={120}
+                  />
+
+                  <YAxis
+                    allowDecimals={false}
+                    domain={[
+                      0,
+                      axisMax,
+                    ]}
+                    ticks={
+                      countTicks
+                    }
+                    interval={0}
+                    tickFormatter={
+                      formatCount
+                    }
+                    label={{
+                      value: 'Count',
+                      angle: -90,
+                      position:
+                        'insideLeft',
+                    }}
+                  />
+
+                  <Tooltip
+                    formatter={(
+                      value
+                    ) => [
+                      formatCount(
+                        value
+                      ),
+                      'Count',
+                    ]}
+                  />
+
+                  <Legend />
+
+                  <Line
+                    type="monotone"
+                    dataKey="count"
+                    name="Count"
+                    stroke="#4338ca"
+                    strokeWidth={3}
+                    dot={{
+                      r: 5,
+                    }}
+                    activeDot={{
+                      r: 7,
+                    }}
+                  />
+
+                </LineChart>
+
+              </ResponsiveContainer>
+
             </div>
           )}
 
-          {selectedCategories.length > 0 && (
-            <div className="csd-chart-card">
-              {!anySelectedStillLoading && fullChartData.length > 0 && (
-                <div className="csd-date-filter">
-                  <label className="csd-date-filter-field">
-                    <span>From</span>
-                    <input
-                      type="date"
-                      value={dateRange.from}
-                      min={dataMinDay}
-                      max={dateRange.to || dataMaxDay}
-                      onChange={(e) => setDateRange((cur) => ({ ...cur, from: e.target.value }))}
-                    />
-                  </label>
-                  <label className="csd-date-filter-field">
-                    <span>To</span>
-                    <input
-                      type="date"
-                      value={dateRange.to}
-                      min={dateRange.from || dataMinDay}
-                      max={dataMaxDay}
-                      onChange={(e) => setDateRange((cur) => ({ ...cur, to: e.target.value }))}
-                    />
-                  </label>
-                  {(dateRange.from || dateRange.to) && (
-                    <button type="button" className="csd-date-filter-clear" onClick={clearDateRange}>
-                      Reset range
-                    </button>
-                  )}
-                </div>
-              )}
-              {anySelectedStillLoading && (
-                <div className="csd-chart-loading">
-                  <Loader2 size={16} strokeWidth={2.25} className="csd-spin" />
-                  <span>Loading sales data…</span>
-                </div>
-              )}
-              {chartData.length === 0 && !anySelectedStillLoading && fullChartData.length === 0 && (
-                <div className="csd-empty">
-                  <p className="csd-empty__sub">No sales recorded yet for the selected categories.</p>
-                </div>
-              )}
-              {chartData.length === 0 && !anySelectedStillLoading && fullChartData.length > 0 && (
-                <div className="csd-empty">
-                  <p className="csd-empty__sub">No sales in the selected date range.</p>
-                  <button type="button" className="csd-retry" onClick={clearDateRange}>
-                    Reset range
-                  </button>
-                </div>
-              )}
-              {chartData.length > 0 && (
-                <ResponsiveContainer width="100%" height={380}>
-                  <AreaChart data={chartData} margin={{ top: 12, right: 24, left: 4, bottom: 24 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#EDEAF4" />
-                    <XAxis
-                      dataKey="dayLabel"
-                      tick={{ fontSize: 11, fill: '#6B667F' }}
-                      interval={0}
-                      angle={-45}
-                      textAnchor="end"
-                      height={60}
-                    />
-                    <YAxis tick={{ fontSize: 12, fill: '#6B667F' }} width={metric === 'revenue' ? 60 : 40} />
-                    <Tooltip
-                      formatter={(value) => formatMetricValue(value)}
-                      labelStyle={{ fontWeight: 600, color: '#1C1A24' }}
-                      contentStyle={{ borderRadius: 10, border: '1px solid #E4E1EE' }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 13 }} />
-                    {/* Solid filled areas, like a mountain silhouette down to the
-                        baseline — no gradient fade. Order matters here: categories
-                        rendered later draw on top, so the smallest series should come
-                        last or it'll get buried under a big one (e.g. Footwear). */}
-                    {selectedCategories.map((c, i) => (
-                      <Area
-                        key={c.categorId}
-                        type="monotone"
-                        dataKey={c.categoryName}
-                        stroke={colorForIndex(i)}
-                        strokeWidth={2}
-                        fill={colorForIndex(i)}
-                        fillOpacity={0.55}
-                        dot={{ r: 3 }}
-                        activeDot={{ r: 5 }}
-                        connectNulls
-                      />
-                    ))}
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-              <p className="csd-chart-caption">
-                {metricLabel} by day. Returned sales are excluded, matching how "sold out" is
-                tracked on the backend.
-              </p>
 
-              {/* Every date plotted above, listed out as a plain table —
-                  useful for reading exact daily values instead of hovering
-                  each point on the chart. */}
-              {chartData.length > 0 && (
-                <div className="csd-table-wrap">
-                  <table className="csd-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        {selectedCategories.map((c) => (
-                          <th key={c.categorId}>{c.categoryName}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {chartData.map((row) => (
-                        <tr key={row.day}>
-                          <td>{row.dayLabel}</td>
-                          {selectedCategories.map((c) => (
-                            <td key={c.categorId}>{formatMetricValue(row[c.categoryName] ?? 0)}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+        {/* =================================================
+            BAR CHART
+        ================================================= */}
+
+        {status === 'done' &&
+          salesData.length > 0 &&
+          chartType === 'bar' && (
+
+            <div className="csd-rechart">
+
+              <ResponsiveContainer
+                width="100%"
+                height={450}
+              >
+
+                <BarChart
+                  data={salesData}
+                  margin={{
+                    top: 20,
+                    right: 30,
+                    left: 30,
+                    bottom: 100,
+                  }}
+                >
+
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                  />
+
+                  <XAxis
+                    dataKey="categoryName"
+                    angle={-35}
+                    textAnchor="end"
+                    interval={0}
+                    height={120}
+                  />
+
+                  <YAxis
+                    allowDecimals={false}
+                    domain={[
+                      0,
+                      axisMax,
+                    ]}
+                    ticks={
+                      countTicks
+                    }
+                    interval={0}
+                    tickFormatter={
+                      formatCount
+                    }
+                    label={{
+                      value: 'Count',
+                      angle: -90,
+                      position:
+                        'insideLeft',
+                    }}
+                  />
+
+                  <Tooltip
+                    formatter={(
+                      value
+                    ) => [
+                      formatCount(
+                        value
+                      ),
+                      'Count',
+                    ]}
+                  />
+
+                  <Legend />
+
+                  <Bar
+                    dataKey="count"
+                    name="Count"
+                    fill="#4338ca"
+                    radius={[
+                      4,
+                      4,
+                      0,
+                      0,
+                    ]}
+                  />
+
+                </BarChart>
+
+              </ResponsiveContainer>
+
             </div>
           )}
 
-          {/* --- Per-category product breakdown --- */}
-          {selectedCategories.length > 0 && (
-            <div className="csd-groups">
-              {selectedCategories.map((c, i) => {
-                const entry = categoryData[c.categorId]
-                const isExpanded = expandedCategoryIds.has(c.categorId)
-                return (
-                  <div key={c.categorId} className="csd-group">
-                    <button
-                      type="button"
-                      className="csd-group-header"
-                      onClick={() => toggleExpanded(c.categorId)}
-                      aria-expanded={isExpanded}
-                    >
-                      <span className="csd-group-header-left">
-                        <span className="csd-chip-dot" style={{ background: colorForIndex(i) }} />
-                        {isExpanded ? (
-                          <ChevronDown size={16} strokeWidth={2.25} />
-                        ) : (
-                          <ChevronRight size={16} strokeWidth={2.25} />
-                        )}
-                        <span className="csd-group-title">{c.categoryName}</span>
-                      </span>
-                      <span className="csd-group-count">
-                        {entry?.loading
-                          ? 'Loading…'
-                          : entry?.error
-                          ? 'Failed to load'
-                          : `${entry?.products?.length ?? 0} products`}
-                      </span>
-                    </button>
 
-                    {isExpanded && entry && !entry.loading && !entry.error && (
-                      <div className="csd-table-wrap">
-                        <table className="csd-table">
-                          <thead>
-                            <tr>
-                              <th>Product</th>
-                              <th>Barcode</th>
-                              <th>MRP</th>
-                              <th>Sale Price</th>
-                              <th>Available Qty</th>
-                              <th>Sold Qty</th>
-                              <th>Returned Qty</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {entry.products.map((p) => (
-                              <tr key={p.id}>
-                                <td>{p.productName}</td>
-                                <td>{p.barcode}</td>
-                                <td>₹{Number(p.mrp).toFixed(2)}</td>
-                                <td>₹{Number(p.retailSalePrice).toFixed(2)}</td>
-                                <td>{p.availableQuantity}</td>
-                                <td>{p.totalSoldQuantity}</td>
-                                <td>{p.totalReturnedQuantity}</td>
-                              </tr>
-                            ))}
-                            {entry.products.length === 0 && (
-                              <tr>
-                                <td colSpan={7} className="csd-table-empty">
-                                  No products in this category.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
+        {/* =================================================
+            HORIZONTAL BAR
+        ================================================= */}
 
-                    {isExpanded && entry?.error && (
-                      <p className="csd-group-error">{entry.error}</p>
-                    )}
-                  </div>
-                )
-              })}
+        {status === 'done' &&
+          salesData.length > 0 &&
+          chartType ===
+            'horizontalBar' && (
+
+            <div className="csd-rechart">
+
+              <ResponsiveContainer
+                width="100%"
+                height={Math.max(
+                  450,
+                  salesData.length *
+                    35
+                )}
+              >
+
+                <BarChart
+                  layout="vertical"
+                  data={salesData}
+                  margin={{
+                    top: 20,
+                    right: 30,
+                    left: 120,
+                    bottom: 50,
+                  }}
+                >
+
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                  />
+
+                  <XAxis
+                    type="number"
+                    allowDecimals={false}
+                    domain={[
+                      0,
+                      axisMax,
+                    ]}
+                    ticks={
+                      countTicks
+                    }
+                    interval={0}
+                    tickFormatter={
+                      formatCount
+                    }
+                    label={{
+                      value: 'Count',
+                      position:
+                        'insideBottom',
+                      offset: -10,
+                    }}
+                  />
+
+                  <YAxis
+                    type="category"
+                    dataKey="categoryName"
+                    width={110}
+                  />
+
+                  <Tooltip
+                    formatter={(
+                      value
+                    ) => [
+                      formatCount(
+                        value
+                      ),
+                      'Count',
+                    ]}
+                  />
+
+                  <Legend />
+
+                  <Bar
+                    dataKey="count"
+                    name="Count"
+                    fill="#4338ca"
+                    radius={[
+                      0,
+                      4,
+                      4,
+                      0,
+                    ]}
+                  />
+
+                </BarChart>
+
+              </ResponsiveContainer>
+
             </div>
           )}
-        </>
-      )}
 
-      
+
+        {/* =================================================
+            TOTAL
+        ================================================= */}
+
+        {status === 'done' &&
+          salesData.length > 0 && (
+
+            <div className="csd-total">
+              Total units sold:{' '}
+              <strong>
+                {formatCount(
+                  grandTotal
+                )}
+              </strong>
+            </div>
+
+          )}
+
+      </div>
+
     </div>
   )
 }
