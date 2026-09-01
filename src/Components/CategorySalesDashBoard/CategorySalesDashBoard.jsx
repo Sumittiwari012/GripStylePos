@@ -17,6 +17,10 @@ import {
 const API_URL =
   'https://gripstyleapi.runasp.net/api/Sales/getInvoiceTrendByCategories'
 
+// New: per-category product breakdown endpoint
+const PRODUCT_API_URL =
+  'https://gripstyleapi.runasp.net/api/Sales/getCategoryPdtSoldAndUnsoldQuantities'
+
 const CHART_TYPES = [
   { id: 'line', label: 'Line' },
   { id: 'bar', label: 'Bar' },
@@ -25,6 +29,13 @@ const CHART_TYPES = [
 
 const formatCount = (value) =>
   new Intl.NumberFormat('en-IN').format(value)
+
+const formatCurrency = (value) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2,
+  }).format(value ?? 0)
 
 
 /* =========================================================
@@ -47,6 +58,30 @@ const getTickInterval = (max) => {
   )
 
   return magnitude
+}
+
+
+/* =========================================================
+   CUSTOM CLICKABLE DOT (for the line chart)
+   ========================================================= */
+
+const ClickableDot = (props) => {
+  const { cx, cy, payload, onDotClick } = props
+
+  if (cx == null || cy == null) return null
+
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={5}
+      fill="#4338ca"
+      stroke="#fff"
+      strokeWidth={1}
+      style={{ cursor: 'pointer' }}
+      onClick={() => onDotClick?.(payload)}
+    />
+  )
 }
 
 
@@ -74,6 +109,19 @@ function CategorySalesDashboard({
   const [chartType, setChartType] =
     useState('line')
 
+  // ── Selected category (from clicking the chart) ──
+  const [selectedCategory, setSelectedCategory] =
+    useState(null) // { categoryId, categoryName }
+
+  const [productData, setProductData] =
+    useState([])
+
+  const [productStatus, setProductStatus] =
+    useState('idle') // idle | loading | done | error
+
+  const [productError, setProductError] =
+    useState('')
+
 
   /* =======================================================
      DATE RANGE
@@ -95,7 +143,7 @@ function CategorySalesDashboard({
 
 
   /* =======================================================
-     FETCH DATA
+     FETCH DATA (category totals for the chart)
      ======================================================= */
 
   useEffect(() => {
@@ -106,6 +154,11 @@ function CategorySalesDashboard({
       setSalesData([])
       setStatus('idle')
       setErrorMessage('')
+      // Clear any selected-category drilldown too — it no longer applies.
+      setSelectedCategory(null)
+      setProductData([])
+      setProductStatus('idle')
+      setProductError('')
       return
     }
 
@@ -214,6 +267,151 @@ function CategorySalesDashboard({
 
 
   /* =======================================================
+     FETCH DATA (products for the selected category)
+     Fires whenever selectedCategory or the date range changes.
+     ======================================================= */
+
+  useEffect(() => {
+    if (
+      !selectedCategory ||
+      !dateRange.from ||
+      !dateRange.to
+    ) {
+      return
+    }
+
+    const controller =
+      new AbortController()
+
+    const fetchProducts = async () => {
+      setProductStatus('loading')
+      setProductError('')
+
+      try {
+        const params =
+          new URLSearchParams({
+            CategoryId:
+              selectedCategory.categoryId,
+            StartDate: dateRange.from,
+            EndDate: dateRange.to,
+          })
+
+        const response =
+          await fetch(
+            `${PRODUCT_API_URL}?${params.toString()}`,
+            {
+              signal:
+                controller.signal,
+            }
+          )
+
+        if (!response.ok) {
+          const body =
+            await response
+              .json()
+              .catch(() => null)
+
+          throw new Error(
+            body?.message ||
+              `Request failed (${response.status})`
+          )
+        }
+
+        const data =
+          await response.json()
+
+        const formatted =
+          Array.isArray(data)
+            ? data.map((item) => ({
+                productId:
+                  item.productId ??
+                  item.ProductId,
+                productName:
+                  item.productName ??
+                  item.ProductName,
+                barcode:
+                  item.barcode ??
+                  item.Barcode,
+                price: Number(
+                  item.price ??
+                    item.Price ??
+                    0
+                ),
+                mrp: Number(
+                  item.mrp ??
+                    item.MRP ??
+                    0
+                ),
+                quantitySold: Number(
+                  item.quantitySold ??
+                    item.QuantitySold ??
+                    0
+                ),
+                quantityAvailable: Number(
+                  item.quantityAvailable ??
+                    item.QuantityAvailable ??
+                    0
+                ),
+              }))
+            : []
+
+        setProductData(formatted)
+        setProductStatus('done')
+      } catch (error) {
+        if (
+          error.name ===
+          'AbortError'
+        ) {
+          return
+        }
+
+        setProductError(
+          error.message ||
+            'Something went wrong while loading product details.'
+        )
+        setProductStatus('error')
+      }
+    }
+
+    fetchProducts()
+
+    return () => {
+      controller.abort()
+    }
+  }, [
+    selectedCategory,
+    dateRange.from,
+    dateRange.to,
+  ])
+
+
+  /* =======================================================
+     CATEGORY CLICK HANDLER
+     Works for both the Bar chart's onClick payload shape
+     ({ categoryId, categoryName, ... }) and the Line chart's
+     custom dot, which passes the raw data point directly.
+     ======================================================= */
+
+  const handleCategorySelect = (entry) => {
+    if (!entry) return
+
+    const categoryId =
+      entry.categoryId ??
+      entry.payload?.categoryId
+    const categoryName =
+      entry.categoryName ??
+      entry.payload?.categoryName
+
+    if (categoryId == null) return
+
+    setSelectedCategory({
+      categoryId,
+      categoryName,
+    })
+  }
+
+
+  /* =======================================================
      TOTAL
      ======================================================= */
 
@@ -236,34 +434,9 @@ function CategorySalesDashboard({
     0
   )
 
-  /*
-   * Automatically select a suitable
-   * distance between Y-axis ticks.
-   *
-   * Example:
-   *
-   * max = 6   -> 1
-   * max = 12  -> 2
-   * max = 27  -> 5
-   * max = 39  -> 5
-   * max = 85  -> 10
-   * max = 180 -> 20
-   */
   const tickInterval =
     getTickInterval(maxCount)
 
-
-  /*
-   * Round the maximum axis value
-   * up to the next interval.
-   *
-   * Example:
-   *
-   * maxCount = 39
-   * interval = 5
-   *
-   * axisMax = 40
-   */
   const axisMax =
     maxCount === 0
       ? 1
@@ -272,17 +445,6 @@ function CategorySalesDashboard({
             tickInterval
         ) * tickInterval
 
-
-  /*
-   * Generate the actual ticks.
-   *
-   * Example:
-   *
-   * interval = 5
-   * axisMax = 40
-   *
-   * [0, 5, 10, 15, 20, 25, 30, 35, 40]
-   */
   const countTicks =
     Array.from(
       {
@@ -405,6 +567,13 @@ function CategorySalesDashboard({
           </div>
         )}
 
+      {status === 'done' &&
+        salesData.length > 0 && (
+          <p className="csd-hint csd-click-hint">
+            Click a category in the chart to see its product-level breakdown.
+          </p>
+        )}
+
 
       {/* =================================================
           CHART AREA
@@ -523,11 +692,20 @@ function CategorySalesDashboard({
                     name="Count"
                     stroke="#4338ca"
                     strokeWidth={3}
-                    dot={{
-                      r: 5,
-                    }}
+                    dot={
+                      <ClickableDot
+                        onDotClick={
+                          handleCategorySelect
+                        }
+                      />
+                    }
                     activeDot={{
                       r: 7,
+                      style: { cursor: 'pointer' },
+                      onClick: (_, payloadEvent) =>
+                        handleCategorySelect(
+                          payloadEvent?.payload
+                        ),
                     }}
                   />
 
@@ -620,6 +798,8 @@ function CategorySalesDashboard({
                       0,
                       0,
                     ]}
+                    cursor="pointer"
+                    onClick={handleCategorySelect}
                   />
 
                 </BarChart>
@@ -716,6 +896,8 @@ function CategorySalesDashboard({
                       4,
                       0,
                     ]}
+                    cursor="pointer"
+                    onClick={handleCategorySelect}
                   />
 
                 </BarChart>
@@ -745,6 +927,85 @@ function CategorySalesDashboard({
           )}
 
       </div>
+
+
+      {/* =================================================
+          PRODUCT DRILLDOWN (selected category)
+      ================================================= */}
+
+      {selectedCategory && (
+        <div className="csd-product-panel">
+
+          <div className="csd-product-panel-header">
+            <h3>
+              {selectedCategory.categoryName}
+              {' — '}Product Breakdown
+            </h3>
+            <button
+              type="button"
+              className="csd-date-filter-clear"
+              onClick={() =>
+                setSelectedCategory(null)
+              }
+            >
+              Close
+            </button>
+          </div>
+
+          {productStatus === 'loading' && (
+            <p className="csd-hint">
+              Loading products…
+            </p>
+          )}
+
+          {productStatus === 'error' && (
+            <p className="csd-error" role="alert">
+              {productError}
+            </p>
+          )}
+
+          {productStatus === 'done' &&
+            productData.length === 0 && (
+              <p className="csd-hint">
+                No products sold in this category for that range.
+              </p>
+            )}
+
+          {productStatus === 'done' &&
+            productData.length > 0 && (
+              <div className="csd-product-table-wrap">
+                <table className="csd-product-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>Barcode</th>
+                      <th>Price</th>
+                      <th>MRP</th>
+                      <th>Qty Sold</th>
+                      <th>Qty Available</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productData.map((item) => (
+  <tr
+    key={item.productId}
+    data-low-stock={item.quantityAvailable <= 5}
+  >
+    <td>{item.productName}</td>
+    <td>{item.barcode}</td>
+    <td>{formatCurrency(item.price)}</td>
+    <td>{formatCurrency(item.mrp)}</td>
+    <td>{formatCount(item.quantitySold)}</td>
+    <td>{formatCount(item.quantityAvailable)}</td>
+  </tr>
+))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+        </div>
+      )}
 
     </div>
   )

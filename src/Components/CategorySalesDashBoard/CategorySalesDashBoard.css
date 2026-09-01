@@ -1,121 +1,480 @@
 .csd-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 100%;
-  font-family: system-ui, -apple-system, sans-serif;
-}
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          font-family: inherit;
+        }
 
-.csd-date-filter {
-  display: flex;
-  align-items: flex-end;
-  gap: 16px;
-  flex-wrap: wrap;
-}
+        .csd-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
 
-.csd-date-filter-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  color: #4b5563;
-}
+        .csd-header h2 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 700;
+          color: #1C1A24;
+          flex: 1;
+        }
 
-.csd-date-filter-field input {
-  padding: 7px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  color: #1f2937;
+        .csd-metric-toggle {
+          display: flex;
+          border: 1px solid #E4E1EE;
+          border-radius: 8px;
+          overflow: hidden;
+        }
+
+        .csd-metric-btn {
+          padding: 7px 14px;
+          border: none;
+          background: #FFFFFF;
+          color: #6B667F;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .csd-metric-btn.active {
+          background: #1C1A24;
+          color: #FFFFFF;
+        }
+
+        .csd-refresh {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: 8px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          color: #1C1A24;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .csd-refresh:hover {
+          background: #F6F5FA;
+        }
+
+        .csd-spin {
+          animation: csd-spin 0.9s linear infinite;
+        }
+
+        @keyframes csd-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .csd-loading {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 24px 4px;
+          color: #6B667F;
+          font-size: 14px;
+          font-weight: 500;
+        }
+
+        .csd-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          padding: 32px 16px;
+          text-align: center;
+          border: 1px dashed #E4E1EE;
+          border-radius: 12px;
+          background: #FBFAFD;
+        }
+
+        .csd-empty__title {
+          margin: 4px 0 0;
+          font-size: 14px;
+          font-weight: 700;
+          color: #1C1A24;
+        }
+
+        .csd-empty__sub {
+          margin: 0;
+          font-size: 13px;
+          color: #6B667F;
+        }
+
+        .csd-retry {
+          margin-top: 6px;
+          padding: 7px 14px;
+          border-radius: 8px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .csd-chip-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .csd-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 7px 14px;
+          border-radius: 999px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          color: #1C1A24;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .csd-chip:hover {
+          background: #F6F5FA;
+        }
+
+        .csd-chip-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .csd-chart-card {
+          border: 1px solid #E4E1EE;
+          border-radius: 14px;
+          background: #FFFFFF;
+          padding: 16px 12px 8px;
+        }
+
+        .csd-chart-loading {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 8px 0;
+          color: #6B667F;
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        .csd-chart-caption {
+          margin: 4px 8px 4px;
+          font-size: 12px;
+          color: #8A85A0;
+        }
+
+        /* --- Date range filter, sits above the chart --- */
+        .csd-date-filter {
+          display: flex;
+          align-items: flex-end;
+          flex-wrap: wrap;
+          gap: 12px;
+          padding: 4px 8px 16px;
+        }
+
+        .csd-date-filter-field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .csd-date-filter-field span {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: #8A85A0;
+        }
+
+        .csd-date-filter-field input[type='date'] {
+          padding: 7px 10px;
+          border-radius: 8px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          color: #1C1A24;
+          font-size: 13px;
+          font-family: inherit;
+        }
+
+        .csd-date-filter-field input[type='date']:focus {
+          outline: none;
+          border-color: #B9762E;
+        }
+
+        .csd-date-filter-clear {
+          padding: 7px 14px;
+          border-radius: 8px;
+          border: 1px solid #E4E1EE;
+          background: #FFFFFF;
+          color: #6B667F;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .csd-date-filter-clear:hover {
+          background: #F6F5FA;
+          color: #1C1A24;
+        }
+
+        .csd-groups {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .csd-group {
+          border: 1px solid #E4E1EE;
+          border-radius: 12px;
+          background: #FFFFFF;
+          overflow: hidden;
+        }
+
+        .csd-group-header {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px 16px;
+          background: #FBFAFD;
+          border: none;
+          cursor: pointer;
+          text-align: left;
+        }
+
+        .csd-group-header:hover {
+          background: #F6F5FA;
+        }
+
+        .csd-group-header-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #1C1A24;
+        }
+
+        .csd-group-title {
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+        .csd-group-count {
+          font-size: 12px;
+          font-weight: 600;
+          color: #6B667F;
+          background: #F0EEF6;
+          padding: 3px 10px;
+          border-radius: 999px;
+          white-space: nowrap;
+        }
+
+        .csd-group-error {
+          margin: 0;
+          padding: 10px 16px;
+          font-size: 13px;
+          color: #B3261E;
+        }
+
+        .csd-table-wrap {
+          overflow-x: auto;
+          border-top: 1px solid #E4E1EE;
+        }
+
+        .csd-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+
+        .csd-table thead th {
+          text-align: left;
+          padding: 10px 14px;
+          background: #F6F5FA;
+          color: #6B667F;
+          font-weight: 600;
+          font-size: 11px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          border-bottom: 1px solid #E4E1EE;
+        }
+
+        .csd-table tbody td {
+          padding: 10px 14px;
+          color: #1C1A24;
+          border-bottom: 1px solid #F0EEF6;
+        }
+
+        .csd-table tbody tr:last-child td {
+          border-bottom: none;
+        }
+
+        .csd-table-empty {
+          text-align: center;
+          color: #8A85A0;
+          padding: 16px !important;
+        }
+        /* =================================================
+   PRODUCT DRILLDOWN PANEL
+================================================= */
+
+.csd-product-panel {
+  margin-top: 32px;
+  padding: 20px 24px 24px;
   background: #fff;
-  outline: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-.csd-date-filter-clear {
-  border: none;
-  background: transparent;
-  color: #4f46e5;
-  font-size: 13px;
-  cursor: pointer;
-  padding: 7px 0;
-}
-
-.csd-date-filter-clear:hover {
-  text-decoration: underline;
-}
-
-.csd-chart-tabs {
+.csd-product-panel-header {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid #e5e7eb;
-  overflow-x: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #eef0f3;
 }
 
-.csd-chart-tab {
+.csd-product-panel-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1f2333;
+  letter-spacing: -0.01em;
+}
+
+.csd-product-panel-header .csd-date-filter-clear {
   flex-shrink: 0;
-  border: none;
-  background: transparent;
-  padding: 9px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #6b7280;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  border: 1px solid #d8dbe3;
+  background: #f7f8fa;
+  color: #4b4f5c;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.csd-product-panel-header .csd-date-filter-clear:hover {
+  background: #eef0f4;
+  border-color: #c7cbd6;
+}
+
+.csd-click-hint {
+  margin: 4px 0 12px;
+  font-size: 0.85rem;
+  color: #8a8f9c;
+  font-style: italic;
+}
+
+/* =================================================
+   TABLE
+================================================= */
+
+.csd-product-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+}
+
+.csd-product-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.92rem;
+  min-width: 560px;
+}
+
+.csd-product-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f9fafb;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
   white-space: nowrap;
 }
 
-.csd-chart-tab:hover {
-  color: #1f2937;
+.csd-product-table thead th:nth-child(n+3) {
+  text-align: right;
 }
 
-.csd-chart-tab-active {
-  color: #4338ca;
-  border-bottom-color: #4338ca;
+.csd-product-table tbody td {
+  padding: 12px 16px;
+  color: #1f2333;
+  border-bottom: 1px solid #f1f2f5;
+  white-space: nowrap;
 }
 
-.csd-chart-area {
-  width: 100%;
-  min-height: 80px;
+.csd-product-table tbody td:nth-child(n+3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.csd-rechart {
-  width: 100%;
-  min-height: 420px;
+.csd-product-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
-.csd-hint,
-.csd-error {
-  font-size: 14px;
-  color: #6b7280;
-  margin: 0;
+.csd-product-table tbody tr:nth-child(even) {
+  background: #fafbfc;
 }
 
-.csd-error {
-  color: #b91c1c;
+.csd-product-table tbody tr:hover {
+  background: #f0f1fd;
+  transition: background 0.12s ease;
 }
 
-.csd-total {
-  margin-top: 10px;
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.csd-total strong {
-  color: #1f2937;
+.csd-product-table td:first-child,
+.csd-product-table th:first-child {
   font-weight: 600;
 }
 
-@media (max-width: 768px) {
-  .csd-chart-tabs {
-    overflow-x: auto;
+/* Qty Sold — accent it slightly since it's usually the number people scan for */
+.csd-product-table tbody td:nth-child(5) {
+  color: #4338ca;
+  font-weight: 600;
+}
+
+/* Qty Available — flag low stock */
+.csd-product-table tbody td:nth-child(6) {
+  font-weight: 600;
+}
+
+.csd-product-table tbody tr[data-low-stock="true"] td:nth-child(6) {
+  color: #dc2626;
+}
+
+/* =================================================
+   RESPONSIVE
+================================================= */
+
+@media (max-width: 640px) {
+  .csd-product-panel {
+    padding: 16px;
   }
 
-  .csd-chart-area {
-    overflow-x: auto;
+  .csd-product-table {
+    font-size: 0.85rem;
   }
 
-  .csd-rechart {
-    min-width: 650px;
+  .csd-product-table thead th,
+  .csd-product-table tbody td {
+    padding: 10px 12px;
   }
 }
