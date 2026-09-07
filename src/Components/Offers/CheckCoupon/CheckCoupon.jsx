@@ -948,6 +948,7 @@ function CheckCoupon({ onCancel }) {
                               onChange={(e) => setGroupSelected(group, e.target.checked)}
                             />
                           </th>
+                          <th className="cc-serial-col">#</th>
                           {columns.map((col) => (
                             <th key={col}>{humanizeKey(col)}</th>
                           ))}
@@ -969,6 +970,7 @@ function CheckCoupon({ onCancel }) {
                                   aria-label="Select row for PDF export"
                                 />
                               </td>
+                              <td className="cc-serial-col">{idx + 1}</td>
                               {columns.map((col) => (
                                 <td key={col}>{formatCellValue(row[col])}</td>
                               ))}
@@ -1204,6 +1206,13 @@ function CheckCoupon({ onCancel }) {
         .cc-select-col {
           width: 36px;
           text-align: center !important;
+        }
+
+        .cc-serial-col {
+          width: 40px;
+          text-align: center !important;
+          color: #6B667F;
+          font-weight: 600;
         }
 
         .cc-checkbox {
