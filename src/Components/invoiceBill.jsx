@@ -300,14 +300,15 @@ function InvoiceBill({ invoice, onClose }) {
                   {rateGroups[rate].map(withItemMath).map((item) => (
                     <React.Fragment key={item.id}>
                       <tr>
-                        <td style={styles.td}>{item.barcode ?? item.id}</td>
+                        <td >{item.name}</td>
+                        
                         <td style={styles.td}>{item.quantity} PC</td>
                         <td style={{...styles.td, textAlign: 'right'}}>₹{item.mrp.toFixed(2)}</td>
                         <td style={{...styles.td, textAlign: 'right'}}>₹{item.itemDiscount.toFixed(2)}</td>
                         <td style={{...styles.td, textAlign: 'right'}}>₹{item.itemTotal.toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td style={styles.tdSub}>{item.name}</td>
+                        <td style={styles.tdSub}></td>
                         <td style={styles.tdSub}>{item.hsn}</td>
                         <td style={styles.tdSub}></td>
                         <td style={{...styles.tdSub, textAlign: 'right'}} colSpan={2}>₹{item.itemTaxable.toFixed(2)}</td>
