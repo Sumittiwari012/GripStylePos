@@ -1,480 +1,131 @@
+/* Responsive additions for CategorySalesDashboard.
+   Import AFTER './CategorySalesDashBoard.css' so these rules win. */
+
 .csd-wrap {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          font-family: inherit;
-        }
-
-        .csd-header {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
-
-        .csd-header h2 {
-          margin: 0;
-          font-size: 18px;
-          font-weight: 700;
-          color: #1C1A24;
-          flex: 1;
-        }
-
-        .csd-metric-toggle {
-          display: flex;
-          border: 1px solid #E4E1EE;
-          border-radius: 8px;
-          overflow: hidden;
-        }
-
-        .csd-metric-btn {
-          padding: 7px 14px;
-          border: none;
-          background: #FFFFFF;
-          color: #6B667F;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-        }
-
-        .csd-metric-btn.active {
-          background: #1C1A24;
-          color: #FFFFFF;
-        }
-
-        .csd-refresh {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 14px;
-          border-radius: 8px;
-          border: 1px solid #E4E1EE;
-          background: #FFFFFF;
-          color: #1C1A24;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          white-space: nowrap;
-        }
-
-        .csd-refresh:hover {
-          background: #F6F5FA;
-        }
-
-        .csd-spin {
-          animation: csd-spin 0.9s linear infinite;
-        }
-
-        @keyframes csd-spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        .csd-loading {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 24px 4px;
-          color: #6B667F;
-          font-size: 14px;
-          font-weight: 500;
-        }
-
-        .csd-empty {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 6px;
-          padding: 32px 16px;
-          text-align: center;
-          border: 1px dashed #E4E1EE;
-          border-radius: 12px;
-          background: #FBFAFD;
-        }
-
-        .csd-empty__title {
-          margin: 4px 0 0;
-          font-size: 14px;
-          font-weight: 700;
-          color: #1C1A24;
-        }
-
-        .csd-empty__sub {
-          margin: 0;
-          font-size: 13px;
-          color: #6B667F;
-        }
-
-        .csd-retry {
-          margin-top: 6px;
-          padding: 7px 14px;
-          border-radius: 8px;
-          border: 1px solid #E4E1EE;
-          background: #FFFFFF;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-        }
-
-        .csd-chip-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-
-        .csd-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 7px 14px;
-          border-radius: 999px;
-          border: 1px solid #E4E1EE;
-          background: #FFFFFF;
-          color: #1C1A24;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-        }
-
-        .csd-chip:hover {
-          background: #F6F5FA;
-        }
-
-        .csd-chip-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          flex-shrink: 0;
-        }
-
-        .csd-chart-card {
-          border: 1px solid #E4E1EE;
-          border-radius: 14px;
-          background: #FFFFFF;
-          padding: 16px 12px 8px;
-        }
-
-        .csd-chart-loading {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 8px 0;
-          color: #6B667F;
-          font-size: 13px;
-          font-weight: 500;
-        }
-
-        .csd-chart-caption {
-          margin: 4px 8px 4px;
-          font-size: 12px;
-          color: #8A85A0;
-        }
-
-        /* --- Date range filter, sits above the chart --- */
-        .csd-date-filter {
-          display: flex;
-          align-items: flex-end;
-          flex-wrap: wrap;
-          gap: 12px;
-          padding: 4px 8px 16px;
-        }
-
-        .csd-date-filter-field {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .csd-date-filter-field span {
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: #8A85A0;
-        }
-
-        .csd-date-filter-field input[type='date'] {
-          padding: 7px 10px;
-          border-radius: 8px;
-          border: 1px solid #E4E1EE;
-          background: #FFFFFF;
-          color: #1C1A24;
-          font-size: 13px;
-          font-family: inherit;
-        }
-
-        .csd-date-filter-field input[type='date']:focus {
-          outline: none;
-          border-color: #B9762E;
-        }
-
-        .csd-date-filter-clear {
-          padding: 7px 14px;
-          border-radius: 8px;
-          border: 1px solid #E4E1EE;
-          background: #FFFFFF;
-          color: #6B667F;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          white-space: nowrap;
-        }
-
-        .csd-date-filter-clear:hover {
-          background: #F6F5FA;
-          color: #1C1A24;
-        }
-
-        .csd-groups {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .csd-group {
-          border: 1px solid #E4E1EE;
-          border-radius: 12px;
-          background: #FFFFFF;
-          overflow: hidden;
-        }
-
-        .csd-group-header {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 12px 16px;
-          background: #FBFAFD;
-          border: none;
-          cursor: pointer;
-          text-align: left;
-        }
-
-        .csd-group-header:hover {
-          background: #F6F5FA;
-        }
-
-        .csd-group-header-left {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          color: #1C1A24;
-        }
-
-        .csd-group-title {
-          font-size: 14px;
-          font-weight: 700;
-        }
-
-        .csd-group-count {
-          font-size: 12px;
-          font-weight: 600;
-          color: #6B667F;
-          background: #F0EEF6;
-          padding: 3px 10px;
-          border-radius: 999px;
-          white-space: nowrap;
-        }
-
-        .csd-group-error {
-          margin: 0;
-          padding: 10px 16px;
-          font-size: 13px;
-          color: #B3261E;
-        }
-
-        .csd-table-wrap {
-          overflow-x: auto;
-          border-top: 1px solid #E4E1EE;
-        }
-
-        .csd-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13px;
-          white-space: nowrap;
-        }
-
-        .csd-table thead th {
-          text-align: left;
-          padding: 10px 14px;
-          background: #F6F5FA;
-          color: #6B667F;
-          font-weight: 600;
-          font-size: 11px;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          border-bottom: 1px solid #E4E1EE;
-        }
-
-        .csd-table tbody td {
-          padding: 10px 14px;
-          color: #1C1A24;
-          border-bottom: 1px solid #F0EEF6;
-        }
-
-        .csd-table tbody tr:last-child td {
-          border-bottom: none;
-        }
-
-        .csd-table-empty {
-          text-align: center;
-          color: #8A85A0;
-          padding: 16px !important;
-        }
-        /* =================================================
-   PRODUCT DRILLDOWN PANEL
-================================================= */
-
-.csd-product-panel {
-  margin-top: 32px;
-  padding: 20px 24px 24px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
+/* ---------- Date filter ---------- */
+.csd-date-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.csd-date-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.csd-date-filter-field input {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* ---------- Tabs: swipeable row instead of wrapping ---------- */
+.csd-chart-tabs {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.csd-chart-tabs::-webkit-scrollbar { display: none; }
+.csd-chart-tab { flex: 0 0 auto; white-space: nowrap; }
+
+/* ---------- Charts ---------- */
+.csd-chart-area { max-width: 100%; }
+.csd-rechart { max-width: 100%; }
+.csd-chart-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.csd-total { line-height: 1.6; overflow-wrap: anywhere; }
+
+/* ---------- Product panel ---------- */
+.csd-product-panel { max-width: 100%; box-sizing: border-box; }
 .csd-product-panel-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #eef0f3;
+  gap: 0.5rem;
+}
+.csd-product-panel-header h3 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.csd-product-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.csd-product-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+  margin-top: 1rem;
+  font-size: 1rem;
 }
 
-.csd-product-panel-header h3 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: #1f2333;
-  letter-spacing: -0.01em;
+/* ---------- Tablet and below ---------- */
+@media (max-width: 768px) {
+  .csd-product-table th,
+  .csd-product-table td { padding: 0.5rem 0.6rem; font-size: 0.9rem; }
 }
 
-.csd-product-panel-header .csd-date-filter-clear {
-  flex-shrink: 0;
-  padding: 6px 14px;
-  font-size: 0.85rem;
-  border-radius: 8px;
-  border: 1px solid #d8dbe3;
-  background: #f7f8fa;
-  color: #4b4f5c;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.csd-product-panel-header .csd-date-filter-clear:hover {
-  background: #eef0f4;
-  border-color: #c7cbd6;
-}
-
-.csd-click-hint {
-  margin: 4px 0 12px;
-  font-size: 0.85rem;
-  color: #8a8f9c;
-  font-style: italic;
-}
-
-/* =================================================
-   TABLE
-================================================= */
-
-.csd-product-table-wrap {
-  overflow-x: auto;
-  border: 1px solid #eef0f3;
-  border-radius: 10px;
-}
-
-.csd-product-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 0.92rem;
-  min-width: 560px;
-}
-
-.csd-product-table thead th {
-  position: sticky;
-  top: 0;
-  background: #f9fafb;
-  color: #6b7280;
-  font-weight: 600;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  text-align: left;
-  padding: 12px 16px;
-  border-bottom: 1px solid #e5e7eb;
-  white-space: nowrap;
-}
-
-.csd-product-table thead th:nth-child(n+3) {
-  text-align: right;
-}
-
-.csd-product-table tbody td {
-  padding: 12px 16px;
-  color: #1f2333;
-  border-bottom: 1px solid #f1f2f5;
-  white-space: nowrap;
-}
-
-.csd-product-table tbody td:nth-child(n+3) {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.csd-product-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.csd-product-table tbody tr:nth-child(even) {
-  background: #fafbfc;
-}
-
-.csd-product-table tbody tr:hover {
-  background: #f0f1fd;
-  transition: background 0.12s ease;
-}
-
-.csd-product-table td:first-child,
-.csd-product-table th:first-child {
-  font-weight: 600;
-}
-
-/* Qty Sold — accent it slightly since it's usually the number people scan for */
-.csd-product-table tbody td:nth-child(5) {
-  color: #4338ca;
-  font-weight: 600;
-}
-
-/* Qty Available — flag low stock */
-.csd-product-table tbody td:nth-child(6) {
-  font-weight: 600;
-}
-
-.csd-product-table tbody tr[data-low-stock="true"] td:nth-child(6) {
-  color: #dc2626;
-}
-
-/* =================================================
-   RESPONSIVE
-================================================= */
-
+/* ---------- Phones ---------- */
 @media (max-width: 640px) {
-  .csd-product-panel {
-    padding: 16px;
+  .csd-date-filter { flex-direction: column; align-items: stretch; }
+  .csd-date-filter-field input {
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px; /* stops iOS zooming on focus */
   }
+  .csd-date-filter-clear,
+  .csd-chart-tab { min-height: 40px; }
+  .csd-date-filter-clear { width: 100%; }
+  .csd-product-panel-header .csd-date-filter-clear { width: auto; }
 
-  .csd-product-table {
-    font-size: 0.85rem;
-  }
+  .csd-hint { font-size: 0.9rem; }
+  .csd-total { font-size: 0.95rem; }
 
-  .csd-product-table thead th,
-  .csd-product-table tbody td {
-    padding: 10px 12px;
+  /* Table -> stacked cards */
+  .csd-product-table-wrap { overflow-x: visible; }
+  .csd-product-table,
+  .csd-product-table tbody,
+  .csd-product-table tr,
+  .csd-product-table td { display: block; width: 100%; box-sizing: border-box; }
+  .csd-product-table thead,
+  .csd-product-table tfoot { display: none; }
+
+  .csd-product-table tr {
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
   }
+  .csd-product-table tr[data-low-stock='true'] { border-color: #fca5a5; }
+  .csd-product-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    border: 0;
+    text-align: right;
+  }
+  .csd-product-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    text-align: left;
+    color: #6b7280;
+  }
+  .csd-product-table td:first-child {
+    font-weight: 600;
+    text-align: left;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #f3f4f6;
+    margin-bottom: 0.25rem;
+  }
+  .csd-product-table td:first-child::before { display: none; }
+
+  .csd-product-summary { flex-direction: column; gap: 0.35rem; }
 }

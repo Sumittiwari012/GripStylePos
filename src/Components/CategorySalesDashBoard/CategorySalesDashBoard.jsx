@@ -1,4 +1,5 @@
 import './CategorySalesDashBoard.css'
+import './CategorySalesDashBoard.css'
 import React, { useEffect, useState } from 'react'
 
 import {
@@ -32,6 +33,8 @@ const METRICS = [
   { id: 'sales', label: 'Sales' },
 ]
 
+const MOBILE_QUERY = '(max-width: 640px)'
+
 const formatCount = (value) =>
   new Intl.NumberFormat('en-IN').format(value)
 
@@ -49,6 +52,39 @@ const formatCompactCurrency = (value) =>
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(value ?? 0)
+
+
+/* =========================================================
+   MOBILE DETECTION
+   ========================================================= */
+
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia(MOBILE_QUERY).matches
+      : false
+  )
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+
+    const mql = window.matchMedia(MOBILE_QUERY)
+    const onChange = (e) => setIsMobile(e.matches)
+
+    setIsMobile(mql.matches)
+
+    // Safari < 14 only supports addListener
+    if (mql.addEventListener) mql.addEventListener('change', onChange)
+    else mql.addListener(onChange)
+
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener('change', onChange)
+      else mql.removeListener(onChange)
+    }
+  }, [])
+
+  return isMobile
+}
 
 
 /* =========================================================
@@ -87,7 +123,7 @@ const getNiceStep = (max) => {
    ========================================================= */
 
 const ClickableDot = (props) => {
-  const { cx, cy, payload, onDotClick, color = '#4338ca' } = props
+  const { cx, cy, payload, onDotClick, color = '#4338ca', r = 5 } = props
 
   if (cx == null || cy == null) return null
 
@@ -95,7 +131,7 @@ const ClickableDot = (props) => {
     <circle
       cx={cx}
       cy={cy}
-      r={5}
+      r={r}
       fill={color}
       stroke="#fff"
       strokeWidth={1}
@@ -111,6 +147,8 @@ const ClickableDot = (props) => {
    ========================================================= */
 
 function CategorySalesDashboard({ onRangeChange }) {
+  const isMobile = useIsMobile()
+
   const [dateRange, setDateRange] = useState({
     from: '',
     to: '',
@@ -446,6 +484,40 @@ function CategorySalesDashboard({ onRangeChange }) {
   )
 
 
+  /* =======================================================
+     RESPONSIVE CHART SETTINGS
+     ======================================================= */
+
+  const tickStyle = { fontSize: isMobile ? 11 : 12 }
+  const chartHeight = isMobile ? 340 : 450
+  const xAxisHeight = isMobile ? 80 : 120
+  const xAxisAngle = isMobile ? -45 : -35
+  const yAxisWidth = isMobile ? (isSales ? 62 : 40) : isSales ? 80 : 60
+
+  const verticalMargin = isMobile
+    ? { top: 10, right: 12, left: 0, bottom: 10 }
+    : { top: 20, right: 30, left: 30, bottom: 100 }
+
+  const horizontalHeight = Math.max(
+    chartHeight,
+    chartData.length * (isMobile ? 32 : 35)
+  )
+
+  // On phones, give each category ~64px so labels never overlap;
+  // the chart scrolls sideways when there are many categories.
+  const verticalChartWidth = isMobile
+    ? `${Math.max(chartData.length * 64, 0)}px`
+    : '100%'
+
+  const yAxisLabel = isMobile
+    ? undefined
+    : {
+        value: isSales ? 'Sales (₹)' : 'Count',
+        angle: -90,
+        position: 'insideLeft',
+      }
+
+
   return (
     <div className="csd-wrap">
 
@@ -544,7 +616,8 @@ function CategorySalesDashboard({ onRangeChange }) {
 
       {status === 'done' && salesData.length > 0 && (
         <p className="csd-hint csd-click-hint">
-          Click a category in the chart to see its product-level breakdown.
+          {isMobile ? 'Tap' : 'Click'} a category in the chart to see its
+          product-level breakdown.
         </p>
       )}
 
@@ -577,104 +650,99 @@ function CategorySalesDashboard({ onRangeChange }) {
 
 
         {status === 'done' && salesData.length > 0 && chartType === 'line' && (
-          <div className="csd-rechart">
-            <ResponsiveContainer width="100%" height={450}>
-              <LineChart
-                data={chartData}
-                margin={{ top: 20, right: 30, left: 30, bottom: 100 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="categoryName"
-                  angle={-35}
-                  textAnchor="end"
-                  interval={0}
-                  height={120}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  domain={[0, axisMax]}
-                  ticks={axisTicks}
-                  interval={0}
-                  tickFormatter={formatTick}
-                  width={isSales ? 80 : 60}
-                  label={{
-                    value: isSales ? 'Sales (₹)' : 'Count',
-                    angle: -90,
-                    position: 'insideLeft',
-                  }}
-                />
-                <Tooltip
-                  formatter={(value) => [formatTip(value), metricLabel]}
-                />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey={metricKey}
-                  name={metricLabel}
-                  stroke={barColor}
-                  strokeWidth={3}
-                  dot={
-                    <ClickableDot
-                      color={barColor}
-                      onDotClick={handleCategorySelect}
-                    />
-                  }
-                  activeDot={{
-                    r: 7,
-                    style: { cursor: 'pointer' },
-                    onClick: (_, payloadEvent) =>
-                      handleCategorySelect(payloadEvent?.payload),
-                  }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="csd-rechart csd-chart-scroll">
+            <div style={{ width: verticalChartWidth, minWidth: '100%' }}>
+              <ResponsiveContainer width="100%" height={chartHeight}>
+                <LineChart data={chartData} margin={verticalMargin}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="categoryName"
+                    angle={xAxisAngle}
+                    textAnchor="end"
+                    interval={0}
+                    height={xAxisHeight}
+                    tick={tickStyle}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    domain={[0, axisMax]}
+                    ticks={axisTicks}
+                    interval={0}
+                    tickFormatter={formatTick}
+                    tick={tickStyle}
+                    width={yAxisWidth}
+                    label={yAxisLabel}
+                  />
+                  <Tooltip
+                    formatter={(value) => [formatTip(value), metricLabel]}
+                  />
+                  {!isMobile && <Legend />}
+                  <Line
+                    type="monotone"
+                    dataKey={metricKey}
+                    name={metricLabel}
+                    stroke={barColor}
+                    strokeWidth={isMobile ? 2 : 3}
+                    dot={
+                      <ClickableDot
+                        color={barColor}
+                        r={isMobile ? 7 : 5}
+                        onDotClick={handleCategorySelect}
+                      />
+                    }
+                    activeDot={{
+                      r: isMobile ? 9 : 7,
+                      style: { cursor: 'pointer' },
+                      onClick: (_, payloadEvent) =>
+                        handleCategorySelect(payloadEvent?.payload),
+                    }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         )}
 
 
         {status === 'done' && salesData.length > 0 && chartType === 'bar' && (
-          <div className="csd-rechart">
-            <ResponsiveContainer width="100%" height={450}>
-              <BarChart
-                data={chartData}
-                margin={{ top: 20, right: 30, left: 30, bottom: 100 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="categoryName"
-                  angle={-35}
-                  textAnchor="end"
-                  interval={0}
-                  height={120}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  domain={[0, axisMax]}
-                  ticks={axisTicks}
-                  interval={0}
-                  tickFormatter={formatTick}
-                  width={isSales ? 80 : 60}
-                  label={{
-                    value: isSales ? 'Sales (₹)' : 'Count',
-                    angle: -90,
-                    position: 'insideLeft',
-                  }}
-                />
-                <Tooltip
-                  formatter={(value) => [formatTip(value), metricLabel]}
-                />
-                <Legend />
-                <Bar
-                  dataKey={metricKey}
-                  name={metricLabel}
-                  fill={barColor}
-                  radius={[4, 4, 0, 0]}
-                  cursor="pointer"
-                  onClick={handleCategorySelect}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="csd-rechart csd-chart-scroll">
+            <div style={{ width: verticalChartWidth, minWidth: '100%' }}>
+              <ResponsiveContainer width="100%" height={chartHeight}>
+                <BarChart data={chartData} margin={verticalMargin}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="categoryName"
+                    angle={xAxisAngle}
+                    textAnchor="end"
+                    interval={0}
+                    height={xAxisHeight}
+                    tick={tickStyle}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    domain={[0, axisMax]}
+                    ticks={axisTicks}
+                    interval={0}
+                    tickFormatter={formatTick}
+                    tick={tickStyle}
+                    width={yAxisWidth}
+                    label={yAxisLabel}
+                  />
+                  <Tooltip
+                    formatter={(value) => [formatTip(value), metricLabel]}
+                  />
+                  {!isMobile && <Legend />}
+                  <Bar
+                    dataKey={metricKey}
+                    name={metricLabel}
+                    fill={barColor}
+                    radius={[4, 4, 0, 0]}
+                    cursor="pointer"
+                    onClick={handleCategorySelect}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         )}
 
@@ -683,14 +751,15 @@ function CategorySalesDashboard({ onRangeChange }) {
           salesData.length > 0 &&
           chartType === 'horizontalBar' && (
             <div className="csd-rechart">
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(450, chartData.length * 35)}
-              >
+              <ResponsiveContainer width="100%" height={horizontalHeight}>
                 <BarChart
                   layout="vertical"
                   data={chartData}
-                  margin={{ top: 20, right: 30, left: 120, bottom: 50 }}
+                  margin={
+                    isMobile
+                      ? { top: 10, right: 16, left: 0, bottom: 30 }
+                      : { top: 20, right: 30, left: 120, bottom: 50 }
+                  }
                 >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
@@ -700,17 +769,27 @@ function CategorySalesDashboard({ onRangeChange }) {
                     ticks={axisTicks}
                     interval={0}
                     tickFormatter={formatTick}
-                    label={{
-                      value: isSales ? 'Sales (₹)' : 'Count',
-                      position: 'insideBottom',
-                      offset: -10,
-                    }}
+                    tick={tickStyle}
+                    label={
+                      isMobile
+                        ? undefined
+                        : {
+                            value: isSales ? 'Sales (₹)' : 'Count',
+                            position: 'insideBottom',
+                            offset: -10,
+                          }
+                    }
                   />
-                  <YAxis type="category" dataKey="categoryName" width={110} />
+                  <YAxis
+                    type="category"
+                    dataKey="categoryName"
+                    width={isMobile ? 90 : 110}
+                    tick={tickStyle}
+                  />
                   <Tooltip
                     formatter={(value) => [formatTip(value), metricLabel]}
                   />
-                  <Legend />
+                  {!isMobile && <Legend />}
                   <Bar
                     dataKey={metricKey}
                     name={metricLabel}
@@ -779,6 +858,8 @@ function CategorySalesDashboard({ onRangeChange }) {
 
           {productStatus === 'done' && productData.length > 0 && (
             <>
+              {/* On phones the CSS turns each row into a stacked card
+                  (labels come from the data-label attributes). */}
               <div className="csd-product-table-wrap">
                 <table className="csd-product-table">
                   <thead>
@@ -798,13 +879,19 @@ function CategorySalesDashboard({ onRangeChange }) {
                         key={item.productId}
                         data-low-stock={item.quantityAvailable <= 5}
                       >
-                        <td>{item.productName}</td>
-                        <td>{item.barcode}</td>
-                        <td>{formatCurrency(item.price)}</td>
-                        <td>{formatCurrency(item.mrp)}</td>
-                        <td>{formatCount(item.quantitySold)}</td>
-                        <td>{formatCount(item.quantityAvailable)}</td>
-                        <td>{formatCurrency(item.mrp * item.quantitySold)}</td>
+                        <td data-label="Product">{item.productName}</td>
+                        <td data-label="Barcode">{item.barcode}</td>
+                        <td data-label="Price">{formatCurrency(item.price)}</td>
+                        <td data-label="MRP">{formatCurrency(item.mrp)}</td>
+                        <td data-label="Qty Sold">
+                          {formatCount(item.quantitySold)}
+                        </td>
+                        <td data-label="Qty Available">
+                          {formatCount(item.quantityAvailable)}
+                        </td>
+                        <td data-label="Bill (MRP × Qty)">
+                          {formatCurrency(item.mrp * item.quantitySold)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -824,15 +911,7 @@ function CategorySalesDashboard({ onRangeChange }) {
                 </table>
               </div>
 
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '2rem',
-                  marginTop: '1rem',
-                  fontSize: '1rem',
-                }}
-              >
+              <div className="csd-product-summary">
                 <div>
                   Total count sold:{' '}
                   <strong>{formatCount(productTotals.quantitySold)}</strong>
