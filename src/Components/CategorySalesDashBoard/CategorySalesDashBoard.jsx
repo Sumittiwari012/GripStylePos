@@ -17,7 +17,7 @@ import {
 const API_URL =
   'https://gripstyleapi.runasp.net/api/Sales/getInvoiceTrendByCategories'
 
-// New: per-category product breakdown endpoint
+// Per-category product breakdown endpoint
 const PRODUCT_API_URL =
   'https://gripstyleapi.runasp.net/api/Sales/getCategoryPdtSoldAndUnsoldQuantities'
 
@@ -25,6 +25,11 @@ const CHART_TYPES = [
   { id: 'line', label: 'Line' },
   { id: 'bar', label: 'Bar' },
   { id: 'horizontalBar', label: 'Horizontal Bar' },
+]
+
+const METRICS = [
+  { id: 'count', label: 'Count' },
+  { id: 'sales', label: 'Sales' },
 ]
 
 const formatCount = (value) =>
@@ -35,6 +40,14 @@ const formatCurrency = (value) =>
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 2,
+  }).format(value ?? 0)
+
+const formatCompactCurrency = (value) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    notation: 'compact',
+    maximumFractionDigits: 1,
   }).format(value ?? 0)
 
 
@@ -52,12 +65,20 @@ const getTickInterval = (max) => {
   if (max <= 500) return 50
   if (max <= 1000) return 100
 
-  const magnitude = Math.pow(
-    10,
-    Math.floor(Math.log10(max))
-  )
+  const magnitude = Math.pow(10, Math.floor(Math.log10(max)))
 
   return magnitude
+}
+
+
+/* Nice 1/2/5 x 10^n step so the sales axis has ~5-8 ticks */
+const getNiceStep = (max) => {
+  if (max <= 0) return 1
+  const rough = max / 6
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)))
+  const n = rough / pow
+  const nice = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10
+  return nice * pow
 }
 
 
@@ -66,7 +87,7 @@ const getTickInterval = (max) => {
    ========================================================= */
 
 const ClickableDot = (props) => {
-  const { cx, cy, payload, onDotClick } = props
+  const { cx, cy, payload, onDotClick, color = '#4338ca' } = props
 
   if (cx == null || cy == null) return null
 
@@ -75,7 +96,7 @@ const ClickableDot = (props) => {
       cx={cx}
       cy={cy}
       r={5}
-      fill="#4338ca"
+      fill={color}
       stroke="#fff"
       strokeWidth={1}
       style={{ cursor: 'pointer' }}
@@ -89,38 +110,30 @@ const ClickableDot = (props) => {
    COMPONENT
    ========================================================= */
 
-function CategorySalesDashboard({
-  onRangeChange,
-}) {
+function CategorySalesDashboard({ onRangeChange }) {
   const [dateRange, setDateRange] = useState({
     from: '',
     to: '',
   })
 
-  const [salesData, setSalesData] =
-    useState([])
+  const [salesData, setSalesData] = useState([])
 
-  const [status, setStatus] =
-    useState('idle')
+  const [status, setStatus] = useState('idle')
 
-  const [errorMessage, setErrorMessage] =
-    useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
-  const [chartType, setChartType] =
-    useState('line')
+  const [chartType, setChartType] = useState('line')
+
+  const [metric, setMetric] = useState('count') // 'count' | 'sales'
 
   // ── Selected category (from clicking the chart) ──
-  const [selectedCategory, setSelectedCategory] =
-    useState(null) // { categoryId, categoryName }
+  const [selectedCategory, setSelectedCategory] = useState(null) // { categoryId, categoryName }
 
-  const [productData, setProductData] =
-    useState([])
+  const [productData, setProductData] = useState([])
 
-  const [productStatus, setProductStatus] =
-    useState('idle') // idle | loading | done | error
+  const [productStatus, setProductStatus] = useState('idle') // idle | loading | done | error
 
-  const [productError, setProductError] =
-    useState('')
+  const [productError, setProductError] = useState('')
 
 
   /* =======================================================
@@ -133,7 +146,6 @@ function CategorySalesDashboard({
     onRangeChange?.(nextRange)
   }
 
-
   const clearDateRange = () => {
     updateRange({
       from: '',
@@ -143,14 +155,11 @@ function CategorySalesDashboard({
 
 
   /* =======================================================
-     FETCH DATA (category totals for the chart)
+     FETCH DATA (category totals + sales for the chart)
      ======================================================= */
 
   useEffect(() => {
-    if (
-      !dateRange.from ||
-      !dateRange.to
-    ) {
+    if (!dateRange.from || !dateRange.to) {
       setSalesData([])
       setStatus('idle')
       setErrorMessage('')
@@ -162,87 +171,107 @@ function CategorySalesDashboard({
       return
     }
 
-    const controller =
-      new AbortController()
+    const controller = new AbortController()
 
     const fetchSales = async () => {
       setStatus('loading')
       setErrorMessage('')
 
       try {
-        const params =
-          new URLSearchParams({
-            StartDate: dateRange.from,
-            EndDate: dateRange.to,
-          })
+        const params = new URLSearchParams({
+          StartDate: dateRange.from,
+          EndDate: dateRange.to,
+        })
 
-        const response =
-          await fetch(
-            `${API_URL}?${params.toString()}`,
-            {
-              signal:
-                controller.signal,
-            }
-          )
+        const response = await fetch(`${API_URL}?${params.toString()}`, {
+          signal: controller.signal,
+        })
 
         if (!response.ok) {
-          const body =
-            await response
-              .json()
-              .catch(() => null)
+          const body = await response.json().catch(() => null)
 
           throw new Error(
-            body?.message ||
-              `Request failed (${response.status})`
+            body?.message || `Request failed (${response.status})`
           )
         }
 
-        const data =
-          await response.json()
+        const data = await response.json()
 
-        const formattedData =
-          Array.isArray(data)
-            ? data
-                .map((item) => ({
-                  categoryId:
-                    item.categoryId ??
-                    item.CategoryId,
+        let formattedData = Array.isArray(data)
+          ? data
+              .map((item) => {
+                // Use a sales field from the API if it exists
+                const rawSales =
+                  item.totalSales ??
+                  item.TotalSales ??
+                  item.totalAmount ??
+                  item.TotalAmount ??
+                  item.sales ??
+                  item.Sales ??
+                  null
 
-                  categoryName:
-                    item.categoryName ??
-                    item.CategoryName,
+                return {
+                  categoryId: item.categoryId ?? item.CategoryId,
+                  categoryName: item.categoryName ?? item.CategoryName,
+                  count: Number(item.count ?? item.Count ?? 0),
+                  sales: rawSales == null ? null : Number(rawSales),
+                }
+              })
+              .filter((item) => item.categoryName && item.count >= 0)
+          : []
 
-                  count: Number(
-                    item.count ??
-                      item.Count ??
+        // If the API didn't return sales, compute it per category
+        // from the product endpoint (MRP × quantity sold).
+        if (formattedData.some((item) => item.sales == null)) {
+          formattedData = await Promise.all(
+            formattedData.map(async (cat) => {
+              if (cat.sales != null) return cat
+
+              try {
+                const p = new URLSearchParams({
+                  CategoryId: cat.categoryId,
+                  StartDate: dateRange.from,
+                  EndDate: dateRange.to,
+                })
+
+                const res = await fetch(`${PRODUCT_API_URL}?${p.toString()}`, {
+                  signal: controller.signal,
+                })
+
+                if (!res.ok) throw new Error('product fetch failed')
+
+                const rows = await res.json()
+
+                const sales = Array.isArray(rows)
+                  ? rows.reduce(
+                      (sum, r) =>
+                        sum +
+                        // use r.price ?? r.Price for the actual selling price
+                        Number(r.mrp ?? r.MRP ?? 0) *
+                          Number(r.quantitySold ?? r.QuantitySold ?? 0),
                       0
-                  ),
-                }))
-                .filter(
-                  (item) =>
-                    item.categoryName &&
-                    item.count >= 0
-                )
-            : []
+                    )
+                  : 0
+
+                return { ...cat, sales }
+              } catch (e) {
+                if (e.name === 'AbortError') throw e
+                return { ...cat, sales: 0 }
+              }
+            })
+          )
+        }
 
         /*
          * Highest count first.
          */
-        formattedData.sort(
-          (a, b) =>
-            b.count - a.count
-        )
+        formattedData.sort((a, b) => b.count - a.count)
 
-        setSalesData(
-          formattedData
-        )
+        setSalesData(formattedData)
 
         setStatus('done')
       } catch (error) {
-        if (
-          error.name ===
-          'AbortError'
-        ) {
+        if (error.name === 'AbortError') {
           return
         }
 
@@ -260,10 +289,7 @@ function CategorySalesDashboard({
     return () => {
       controller.abort()
     }
-  }, [
-    dateRange.from,
-    dateRange.to,
-  ])
+  }, [dateRange.from, dateRange.to])
 
 
   /* =======================================================
@@ -272,96 +298,60 @@ function CategorySalesDashboard({
      ======================================================= */
 
   useEffect(() => {
-    if (
-      !selectedCategory ||
-      !dateRange.from ||
-      !dateRange.to
-    ) {
+    if (!selectedCategory || !dateRange.from || !dateRange.to) {
       return
     }
 
-    const controller =
-      new AbortController()
+    const controller = new AbortController()
 
     const fetchProducts = async () => {
       setProductStatus('loading')
       setProductError('')
 
       try {
-        const params =
-          new URLSearchParams({
-            CategoryId:
-              selectedCategory.categoryId,
-            StartDate: dateRange.from,
-            EndDate: dateRange.to,
-          })
+        const params = new URLSearchParams({
+          CategoryId: selectedCategory.categoryId,
+          StartDate: dateRange.from,
+          EndDate: dateRange.to,
+        })
 
-        const response =
-          await fetch(
-            `${PRODUCT_API_URL}?${params.toString()}`,
-            {
-              signal:
-                controller.signal,
-            }
-          )
+        const response = await fetch(
+          `${PRODUCT_API_URL}?${params.toString()}`,
+          {
+            signal: controller.signal,
+          }
+        )
 
         if (!response.ok) {
-          const body =
-            await response
-              .json()
-              .catch(() => null)
+          const body = await response.json().catch(() => null)
 
           throw new Error(
-            body?.message ||
-              `Request failed (${response.status})`
+            body?.message || `Request failed (${response.status})`
           )
         }
 
-        const data =
-          await response.json()
+        const data = await response.json()
 
-        const formatted =
-          Array.isArray(data)
-            ? data.map((item) => ({
-                productId:
-                  item.productId ??
-                  item.ProductId,
-                productName:
-                  item.productName ??
-                  item.ProductName,
-                barcode:
-                  item.barcode ??
-                  item.Barcode,
-                price: Number(
-                  item.price ??
-                    item.Price ??
-                    0
-                ),
-                mrp: Number(
-                  item.mrp ??
-                    item.MRP ??
-                    0
-                ),
-                quantitySold: Number(
-                  item.quantitySold ??
-                    item.QuantitySold ??
-                    0
-                ),
-                quantityAvailable: Number(
-                  item.quantityAvailable ??
-                    item.QuantityAvailable ??
-                    0
-                ),
-              }))
-            : []
+        const formatted = Array.isArray(data)
+          ? data.map((item) => ({
+              productId: item.productId ?? item.ProductId,
+              productName: item.productName ?? item.ProductName,
+              barcode: item.barcode ?? item.Barcode,
+              price: Number(item.price ?? item.Price ?? 0),
+              mrp: Number(item.mrp ?? item.MRP ?? 0),
+              quantitySold: Number(
+                item.quantitySold ?? item.QuantitySold ?? 0
+              ),
+              quantityAvailable: Number(
+                item.quantityAvailable ?? item.QuantityAvailable ?? 0
+              ),
+            }))
+          : []
 
         setProductData(formatted)
         setProductStatus('done')
       } catch (error) {
-        if (
-          error.name ===
-          'AbortError'
-        ) {
+        if (error.name === 'AbortError') {
           return
         }
 
@@ -378,11 +368,7 @@ function CategorySalesDashboard({
     return () => {
       controller.abort()
     }
-  }, [
-    selectedCategory,
-    dateRange.from,
-    dateRange.to,
-  ])
+  }, [selectedCategory, dateRange.from, dateRange.to])
 
 
   /* =======================================================
@@ -395,12 +381,8 @@ function CategorySalesDashboard({
   const handleCategorySelect = (entry) => {
     if (!entry) return
 
-    const categoryId =
-      entry.categoryId ??
-      entry.payload?.categoryId
-    const categoryName =
-      entry.categoryName ??
-      entry.payload?.categoryName
+    const categoryId = entry.categoryId ?? entry.payload?.categoryId
+    const categoryName = entry.categoryName ?? entry.payload?.categoryName
 
     if (categoryId == null) return
 
@@ -412,51 +394,56 @@ function CategorySalesDashboard({
 
 
   /* =======================================================
-     TOTAL
+     TOTALS
      ======================================================= */
 
-  const grandTotal =
-    salesData.reduce(
-      (total, item) =>
-        total + item.count,
-      0
-    )
+  const grandTotal = salesData.reduce((total, item) => total + item.count, 0)
+
+  const grandTotalSales = salesData.reduce(
+    (total, item) => total + (item.sales ?? 0),
+    0
+  )
 
 
   /* =======================================================
      Y AXIS CALCULATIONS
      ======================================================= */
 
-  const maxCount = Math.max(
-    ...salesData.map(
-      (item) => item.count
-    ),
-    0
+  const isSales = metric === 'sales'
+  const metricKey = isSales ? 'sales' : 'count'
+  const metricLabel = isSales ? 'Sales' : 'Count'
+  const barColor = isSales ? '#f59e0b' : '#4338ca'
+
+  const formatTick = isSales ? formatCompactCurrency : formatCount
+  const formatTip = isSales ? formatCurrency : formatCount
+
+  // Sort by the selected metric (highest first)
+  const chartData = [...salesData].sort(
+    (x, y) => (y[metricKey] ?? 0) - (x[metricKey] ?? 0)
   )
 
-  const tickInterval =
-    getTickInterval(maxCount)
+  const maxValue = Math.max(...chartData.map((item) => item[metricKey] ?? 0), 0)
+
+  const tickInterval = isSales ? getNiceStep(maxValue) : getTickInterval(maxValue)
 
   const axisMax =
-    maxCount === 0
-      ? 1
-      : Math.ceil(
-          maxCount /
-            tickInterval
-        ) * tickInterval
+    maxValue === 0 ? 1 : Math.ceil(maxValue / tickInterval) * tickInterval
 
-  const countTicks =
-    Array.from(
-      {
-        length:
-          Math.floor(
-            axisMax /
-              tickInterval
-          ) + 1,
-      },
-      (_, index) =>
-        index * tickInterval
-    )
+  // Always starts at 0, so the minimum is visible on the axis
+  const axisTicks = Array.from(
+    { length: Math.round(axisMax / tickInterval) + 1 },
+    (_, index) => index * tickInterval
+  )
+
+  /* Totals for the clicked category's product table */
+  const productTotals = productData.reduce(
+    (t, item) => ({
+      quantitySold: t.quantitySold + item.quantitySold,
+      quantityAvailable: t.quantityAvailable + item.quantityAvailable,
+      bill: t.bill + item.mrp * item.quantitySold,
+    }),
+    { quantitySold: 0, quantityAvailable: 0, bill: 0 }
+  )
 
 
   return (
@@ -474,20 +461,15 @@ function CategorySalesDashboard({
           <input
             type="date"
             value={dateRange.from}
-            max={
-              dateRange.to ||
-              undefined
-            }
+            max={dateRange.to || undefined}
             onChange={(event) => {
               updateRange({
                 ...dateRange,
-                from:
-                  event.target.value,
+                from: event.target.value,
               })
             }}
           />
         </label>
-
 
         <label className="csd-date-filter-field">
           <span>To</span>
@@ -495,29 +477,21 @@ function CategorySalesDashboard({
           <input
             type="date"
             value={dateRange.to}
-            min={
-              dateRange.from ||
-              undefined
-            }
+            min={dateRange.from || undefined}
             onChange={(event) => {
               updateRange({
                 ...dateRange,
-                to:
-                  event.target.value,
+                to: event.target.value,
               })
             }}
           />
         </label>
 
-
-        {(dateRange.from ||
-          dateRange.to) && (
+        {(dateRange.from || dateRange.to) && (
           <button
             type="button"
             className="csd-date-filter-clear"
-            onClick={
-              clearDateRange
-            }
+            onClick={clearDateRange}
           >
             Reset range
           </button>
@@ -530,49 +504,49 @@ function CategorySalesDashboard({
           CHART TABS
       ================================================= */}
 
-      {status === 'done' &&
-        salesData.length > 0 && (
-          <div
-            className="csd-chart-tabs"
-            role="tablist"
-          >
+      {status === 'done' && salesData.length > 0 && (
+        <div className="csd-chart-tabs" role="tablist" aria-label="Metric">
+          {METRICS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="tab"
+              aria-selected={metric === m.id}
+              className={`csd-chart-tab ${
+                metric === m.id ? 'csd-chart-tab-active' : ''
+              }`}
+              onClick={() => setMetric(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-            {CHART_TYPES.map(
-              (chart) => (
-                <button
-                  key={chart.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={
-                    chartType ===
-                    chart.id
-                  }
-                  className={`csd-chart-tab ${
-                    chartType ===
-                    chart.id
-                      ? 'csd-chart-tab-active'
-                      : ''
-                  }`}
-                  onClick={() =>
-                    setChartType(
-                      chart.id
-                    )
-                  }
-                >
-                  {chart.label}
-                </button>
-              )
-            )}
+      {status === 'done' && salesData.length > 0 && (
+        <div className="csd-chart-tabs" role="tablist" aria-label="Chart type">
+          {CHART_TYPES.map((chart) => (
+            <button
+              key={chart.id}
+              type="button"
+              role="tab"
+              aria-selected={chartType === chart.id}
+              className={`csd-chart-tab ${
+                chartType === chart.id ? 'csd-chart-tab-active' : ''
+              }`}
+              onClick={() => setChartType(chart.id)}
+            >
+              {chart.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-          </div>
-        )}
-
-      {status === 'done' &&
-        salesData.length > 0 && (
-          <p className="csd-hint csd-click-hint">
-            Click a category in the chart to see its product-level breakdown.
-          </p>
-        )}
+      {status === 'done' && salesData.length > 0 && (
+        <p className="csd-hint csd-click-hint">
+          Click a category in the chart to see its product-level breakdown.
+        </p>
+      )}
 
 
       {/* =================================================
@@ -583,348 +557,185 @@ function CategorySalesDashboard({
 
         {status === 'idle' && (
           <p className="csd-hint">
-            Pick a from and to date
-            to see sales by category.
+            Pick a from and to date to see sales by category.
           </p>
         )}
-
 
         {status === 'loading' && (
-          <p className="csd-hint">
-            Loading category sales…
-          </p>
+          <p className="csd-hint">Loading category sales…</p>
         )}
 
-
         {status === 'error' && (
-          <p
-            className="csd-error"
-            role="alert"
-          >
+          <p className="csd-error" role="alert">
             {errorMessage}
           </p>
         )}
 
-
-        {status === 'done' &&
-          salesData.length === 0 && (
-            <p className="csd-hint">
-              No sales found for
-              that range.
-            </p>
-          )}
+        {status === 'done' && salesData.length === 0 && (
+          <p className="csd-hint">No sales found for that range.</p>
+        )}
 
 
-        {/* =================================================
-            LINE CHART
-        ================================================= */}
-
-        {status === 'done' &&
-          salesData.length > 0 &&
-          chartType === 'line' && (
-
-            <div className="csd-rechart">
-
-              <ResponsiveContainer
-                width="100%"
-                height={450}
+        {status === 'done' && salesData.length > 0 && chartType === 'line' && (
+          <div className="csd-rechart">
+            <ResponsiveContainer width="100%" height={450}>
+              <LineChart
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 30, bottom: 100 }}
               >
-
-                <LineChart
-                  data={salesData}
-                  margin={{
-                    top: 20,
-                    right: 30,
-                    left: 30,
-                    bottom: 100,
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="categoryName"
+                  angle={-35}
+                  textAnchor="end"
+                  interval={0}
+                  height={120}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  domain={[0, axisMax]}
+                  ticks={axisTicks}
+                  interval={0}
+                  tickFormatter={formatTick}
+                  width={isSales ? 80 : 60}
+                  label={{
+                    value: isSales ? 'Sales (₹)' : 'Count',
+                    angle: -90,
+                    position: 'insideLeft',
                   }}
-                >
-
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                  />
-
-                  <XAxis
-                    dataKey="categoryName"
-                    angle={-35}
-                    textAnchor="end"
-                    interval={0}
-                    height={120}
-                  />
-
-                  <YAxis
-                    allowDecimals={false}
-                    domain={[
-                      0,
-                      axisMax,
-                    ]}
-                    ticks={
-                      countTicks
-                    }
-                    interval={0}
-                    tickFormatter={
-                      formatCount
-                    }
-                    label={{
-                      value: 'Count',
-                      angle: -90,
-                      position:
-                        'insideLeft',
-                    }}
-                  />
-
-                  <Tooltip
-                    formatter={(
-                      value
-                    ) => [
-                      formatCount(
-                        value
-                      ),
-                      'Count',
-                    ]}
-                  />
-
-                  <Legend />
-
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    name="Count"
-                    stroke="#4338ca"
-                    strokeWidth={3}
-                    dot={
-                      <ClickableDot
-                        onDotClick={
-                          handleCategorySelect
-                        }
-                      />
-                    }
-                    activeDot={{
-                      r: 7,
-                      style: { cursor: 'pointer' },
-                      onClick: (_, payloadEvent) =>
-                        handleCategorySelect(
-                          payloadEvent?.payload
-                        ),
-                    }}
-                  />
-
-                </LineChart>
-
-              </ResponsiveContainer>
-
-            </div>
-          )}
-
-
-        {/* =================================================
-            BAR CHART
-        ================================================= */}
-
-        {status === 'done' &&
-          salesData.length > 0 &&
-          chartType === 'bar' && (
-
-            <div className="csd-rechart">
-
-              <ResponsiveContainer
-                width="100%"
-                height={450}
-              >
-
-                <BarChart
-                  data={salesData}
-                  margin={{
-                    top: 20,
-                    right: 30,
-                    left: 30,
-                    bottom: 100,
+                />
+                <Tooltip
+                  formatter={(value) => [formatTip(value), metricLabel]}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey={metricKey}
+                  name={metricLabel}
+                  stroke={barColor}
+                  strokeWidth={3}
+                  dot={
+                    <ClickableDot
+                      color={barColor}
+                      onDotClick={handleCategorySelect}
+                    />
+                  }
+                  activeDot={{
+                    r: 7,
+                    style: { cursor: 'pointer' },
+                    onClick: (_, payloadEvent) =>
+                      handleCategorySelect(payloadEvent?.payload),
                   }}
-                >
-
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                  />
-
-                  <XAxis
-                    dataKey="categoryName"
-                    angle={-35}
-                    textAnchor="end"
-                    interval={0}
-                    height={120}
-                  />
-
-                  <YAxis
-                    allowDecimals={false}
-                    domain={[
-                      0,
-                      axisMax,
-                    ]}
-                    ticks={
-                      countTicks
-                    }
-                    interval={0}
-                    tickFormatter={
-                      formatCount
-                    }
-                    label={{
-                      value: 'Count',
-                      angle: -90,
-                      position:
-                        'insideLeft',
-                    }}
-                  />
-
-                  <Tooltip
-                    formatter={(
-                      value
-                    ) => [
-                      formatCount(
-                        value
-                      ),
-                      'Count',
-                    ]}
-                  />
-
-                  <Legend />
-
-                  <Bar
-                    dataKey="count"
-                    name="Count"
-                    fill="#4338ca"
-                    radius={[
-                      4,
-                      4,
-                      0,
-                      0,
-                    ]}
-                    cursor="pointer"
-                    onClick={handleCategorySelect}
-                  />
-
-                </BarChart>
-
-              </ResponsiveContainer>
-
-            </div>
-          )}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
 
-        {/* =================================================
-            HORIZONTAL BAR
-        ================================================= */}
+        {status === 'done' && salesData.length > 0 && chartType === 'bar' && (
+          <div className="csd-rechart">
+            <ResponsiveContainer width="100%" height={450}>
+              <BarChart
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 30, bottom: 100 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="categoryName"
+                  angle={-35}
+                  textAnchor="end"
+                  interval={0}
+                  height={120}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  domain={[0, axisMax]}
+                  ticks={axisTicks}
+                  interval={0}
+                  tickFormatter={formatTick}
+                  width={isSales ? 80 : 60}
+                  label={{
+                    value: isSales ? 'Sales (₹)' : 'Count',
+                    angle: -90,
+                    position: 'insideLeft',
+                  }}
+                />
+                <Tooltip
+                  formatter={(value) => [formatTip(value), metricLabel]}
+                />
+                <Legend />
+                <Bar
+                  dataKey={metricKey}
+                  name={metricLabel}
+                  fill={barColor}
+                  radius={[4, 4, 0, 0]}
+                  cursor="pointer"
+                  onClick={handleCategorySelect}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
 
         {status === 'done' &&
           salesData.length > 0 &&
-          chartType ===
-            'horizontalBar' && (
-
+          chartType === 'horizontalBar' && (
             <div className="csd-rechart">
-
               <ResponsiveContainer
                 width="100%"
-                height={Math.max(
-                  450,
-                  salesData.length *
-                    35
-                )}
+                height={Math.max(450, chartData.length * 35)}
               >
-
                 <BarChart
                   layout="vertical"
-                  data={salesData}
-                  margin={{
-                    top: 20,
-                    right: 30,
-                    left: 120,
-                    bottom: 50,
-                  }}
+                  data={chartData}
+                  margin={{ top: 20, right: 30, left: 120, bottom: 50 }}
                 >
-
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                  />
-
+                  <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     type="number"
                     allowDecimals={false}
-                    domain={[
-                      0,
-                      axisMax,
-                    ]}
-                    ticks={
-                      countTicks
-                    }
+                    domain={[0, axisMax]}
+                    ticks={axisTicks}
                     interval={0}
-                    tickFormatter={
-                      formatCount
-                    }
+                    tickFormatter={formatTick}
                     label={{
-                      value: 'Count',
-                      position:
-                        'insideBottom',
+                      value: isSales ? 'Sales (₹)' : 'Count',
+                      position: 'insideBottom',
                       offset: -10,
                     }}
                   />
-
-                  <YAxis
-                    type="category"
-                    dataKey="categoryName"
-                    width={110}
-                  />
-
+                  <YAxis type="category" dataKey="categoryName" width={110} />
                   <Tooltip
-                    formatter={(
-                      value
-                    ) => [
-                      formatCount(
-                        value
-                      ),
-                      'Count',
-                    ]}
+                    formatter={(value) => [formatTip(value), metricLabel]}
                   />
-
                   <Legend />
-
                   <Bar
-                    dataKey="count"
-                    name="Count"
-                    fill="#4338ca"
-                    radius={[
-                      0,
-                      4,
-                      4,
-                      0,
-                    ]}
+                    dataKey={metricKey}
+                    name={metricLabel}
+                    fill={barColor}
+                    radius={[0, 4, 4, 0]}
                     cursor="pointer"
                     onClick={handleCategorySelect}
                   />
-
                 </BarChart>
-
               </ResponsiveContainer>
-
             </div>
           )}
 
 
         {/* =================================================
-            TOTAL
+            TOTALS
         ================================================= */}
 
-        {status === 'done' &&
-          salesData.length > 0 && (
-
-            <div className="csd-total">
-              Total units sold:{' '}
-              <strong>
-                {formatCount(
-                  grandTotal
-                )}
-              </strong>
-            </div>
-
-          )}
+        {status === 'done' && salesData.length > 0 && (
+          <div className="csd-total">
+            Total units sold: <strong>{formatCount(grandTotal)}</strong>
+            {' · '}
+            Total sales: <strong>{formatCurrency(grandTotalSales)}</strong>
+          </div>
+        )}
 
       </div>
 
@@ -944,18 +755,14 @@ function CategorySalesDashboard({
             <button
               type="button"
               className="csd-date-filter-clear"
-              onClick={() =>
-                setSelectedCategory(null)
-              }
+              onClick={() => setSelectedCategory(null)}
             >
               Close
             </button>
           </div>
 
           {productStatus === 'loading' && (
-            <p className="csd-hint">
-              Loading products…
-            </p>
+            <p className="csd-hint">Loading products…</p>
           )}
 
           {productStatus === 'error' && (
@@ -964,15 +771,14 @@ function CategorySalesDashboard({
             </p>
           )}
 
-          {productStatus === 'done' &&
-            productData.length === 0 && (
-              <p className="csd-hint">
-                No products sold in this category for that range.
-              </p>
-            )}
+          {productStatus === 'done' && productData.length === 0 && (
+            <p className="csd-hint">
+              No products sold in this category for that range.
+            </p>
+          )}
 
-          {productStatus === 'done' &&
-            productData.length > 0 && (
+          {productStatus === 'done' && productData.length > 0 && (
+            <>
               <div className="csd-product-table-wrap">
                 <table className="csd-product-table">
                   <thead>
@@ -983,26 +789,61 @@ function CategorySalesDashboard({
                       <th>MRP</th>
                       <th>Qty Sold</th>
                       <th>Qty Available</th>
+                      <th>Bill (MRP × Qty)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {productData.map((item) => (
-  <tr
-    key={item.productId}
-    data-low-stock={item.quantityAvailable <= 5}
-  >
-    <td>{item.productName}</td>
-    <td>{item.barcode}</td>
-    <td>{formatCurrency(item.price)}</td>
-    <td>{formatCurrency(item.mrp)}</td>
-    <td>{formatCount(item.quantitySold)}</td>
-    <td>{formatCount(item.quantityAvailable)}</td>
-  </tr>
-))}
+                      <tr
+                        key={item.productId}
+                        data-low-stock={item.quantityAvailable <= 5}
+                      >
+                        <td>{item.productName}</td>
+                        <td>{item.barcode}</td>
+                        <td>{formatCurrency(item.price)}</td>
+                        <td>{formatCurrency(item.mrp)}</td>
+                        <td>{formatCount(item.quantitySold)}</td>
+                        <td>{formatCount(item.quantityAvailable)}</td>
+                        <td>{formatCurrency(item.mrp * item.quantitySold)}</td>
+                      </tr>
+                    ))}
                   </tbody>
+                  <tfoot>
+                    <tr
+                      style={{
+                        fontWeight: 600,
+                        borderTop: '2px solid #d1d5db',
+                      }}
+                    >
+                      <td colSpan={4}>Total</td>
+                      <td>{formatCount(productTotals.quantitySold)}</td>
+                      <td>{formatCount(productTotals.quantityAvailable)}</td>
+                      <td>{formatCurrency(productTotals.bill)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
-            )}
+
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '2rem',
+                  marginTop: '1rem',
+                  fontSize: '1rem',
+                }}
+              >
+                <div>
+                  Total count sold:{' '}
+                  <strong>{formatCount(productTotals.quantitySold)}</strong>
+                </div>
+                <div>
+                  Total bill (MRP × qty):{' '}
+                  <strong>{formatCurrency(productTotals.bill)}</strong>
+                </div>
+              </div>
+            </>
+          )}
 
         </div>
       )}
