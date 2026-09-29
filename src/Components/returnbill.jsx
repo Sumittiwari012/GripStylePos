@@ -11,6 +11,7 @@ function ReturnBill({ returnData, onClose }) {
   const {
     returnInvoiceNumber,
     originalInvoiceNumber,
+    customerId,
     customerName,
     customerMobile,
     items = [],
@@ -22,42 +23,40 @@ function ReturnBill({ returnData, onClose }) {
 
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState('');
-  // Same "don't let a broken logo silently vanish" guard as InvoiceBill.
   const [logoFailed, setLogoFailed] = useState(false);
 
-  const totalQty = items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
+  // ── Per-item math — identical to InvoiceBill's withItemMath, keyed off the
+  // return item fields (salePrice / lineTotal / productName) instead of the
+  // cart fields (price / name). lineTotal is the after-tax amount, so the
+  // taxable value is backed out of it exactly like InvoiceBill does.
+  const withItemMath = (item) => {
+    const cgst = Number(item.cgst) || 0;
+    const quantity = Number(item.quantity) || 0;
+    const salePrice = Number(item.salePrice) || 0;
+    const itemTotal = Number(item.lineTotal) || salePrice * quantity;
+    const itemTaxable = itemTotal / (100 + 2 * cgst) * 100;
+    const itemTax = itemTaxable * (cgst / 100) * 2;
+    const hsn = item.hsn ?? item.hsnCode ?? item.HSNCode ?? '-';
+    // MRP isn't always named consistently, so try the common variants and
+    // fall back to the sale price (=> zero discount) if none is supplied.
+    const mrp = Number(item.mrp ?? item.MRP ?? item.Mrp ?? item.salePrice) || 0;
+    const itemDiscount = Math.max(mrp - salePrice, 0) * quantity;
+    return { ...item, cgst, quantity, salePrice, itemTotal, itemTaxable, itemTax, hsn, mrp, itemDiscount };
+  };
 
-  // previousCustomerBalance may not always be supplied by the caller (e.g. a
-  // historical return fetched from the backend that doesn't send it) — in
-  // that case derive it, since wallet credits only add to the balance.
-  const resolvedPreviousBalance =
-    previousCustomerBalance != null
-      ? Number(previousCustomerBalance)
-      : Number(updatedCustomerBalance ?? 0) - Number(totalAmount ?? 0);
+  const mathItems = items.map(withItemMath);
 
-  // ── Tax Details — same grouping/derivation InvoiceBill uses for its cart,
-  // just keyed off the return items instead. Each return item's lineTotal
-  // already represents the after-tax amount, so the taxable value is backed
-  // out of it the same way InvoiceBill backs it out of itemTotal.
+  // ── Group items by their CGST rate ──
   const rateGroups = {};
-  items.forEach((item) => {
-    const rate = Number(item.cgst) || 0;
-    if (!rateGroups[rate]) rateGroups[rate] = [];
-    rateGroups[rate].push(item);
+  mathItems.forEach((item) => {
+    if (!rateGroups[item.cgst]) rateGroups[item.cgst] = [];
+    rateGroups[item.cgst].push(item);
   });
   const sortedRates = Object.keys(rateGroups).map(Number).sort((a, b) => a - b);
   const groupLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-  const withItemMath = (item) => {
-    const cgst = Number(item.cgst) || 0;
-    const itemTotal = Number(item.lineTotal) || (Number(item.salePrice) || 0) * (Number(item.quantity) || 0);
-    const itemTaxable = itemTotal / (100 + 2 * cgst) * 100;
-    const itemTax = itemTaxable * (cgst / 100) * 2;
-    return { ...item, cgst, itemTotal, itemTaxable, itemTax };
-  };
-
   const taxDetailRows = sortedRates.map((rate, idx) => {
-    const grouped = rateGroups[rate].map(withItemMath);
+    const grouped = rateGroups[rate];
     const taxableValue = grouped.reduce((sum, i) => sum + i.itemTaxable, 0);
     const cgstAmt = taxableValue * (rate / 100);
     const sgstAmt = taxableValue * (rate / 100);
@@ -82,6 +81,25 @@ function ReturnBill({ returnData, onClose }) {
     }),
     { taxableValue: 0, cgstAmt: 0, sgstAmt: 0, cessAmt: 0, totalAmt: 0 }
   );
+
+  const totalQty = mathItems.reduce((sum, item) => sum + item.quantity, 0);
+  const grossTotal = mathItems.reduce((sum, item) => sum + item.itemTotal, 0);
+
+  // Refund amount: prefer the value the caller supplied, else the item sum.
+  const resolvedTotal = totalAmount != null ? Number(totalAmount) : grossTotal;
+
+  // previousCustomerBalance may not always be supplied (e.g. a historical
+  // return fetched from the backend) — derive it, since wallet credits only
+  // ever add to the balance.
+  const resolvedPreviousBalance =
+    previousCustomerBalance != null
+      ? Number(previousCustomerBalance)
+      : Number(updatedCustomerBalance ?? 0) - resolvedTotal;
+
+  const resolvedUpdatedBalance =
+    updatedCustomerBalance != null
+      ? Number(updatedCustomerBalance)
+      : resolvedPreviousBalance + resolvedTotal;
 
   const handlePrint = () => {
     const printContent = document.getElementById('return-print-area');
@@ -108,6 +126,8 @@ function ReturnBill({ returnData, onClose }) {
             body {
               font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
               margin: 0;
+              /* printArea already carries its own left/right padding, so
+                 keep this smaller to avoid doubling up the margins. */
               padding: 10px;
               color: #000;
               font-size: 12px;
@@ -134,7 +154,6 @@ function ReturnBill({ returnData, onClose }) {
   };
 
   // ── Renders the print area to a canvas, then wraps it in a single-page PDF ──
-  // Same approach as InvoiceBill.generateInvoicePdfBlob.
   const generateReturnPdfBlob = async () => {
     const element = document.getElementById('return-print-area');
     if (!element) return null;
@@ -159,13 +178,10 @@ function ReturnBill({ returnData, onClose }) {
     return pdf.output('blob');
   };
 
-  // ── Generate the PDF client-side and upload it to the WhatsApp service ──
-  // NOTE: this reuses the same /send-invoice endpoint InvoiceBill posts to,
-  // assuming the backend treats it as "send this PDF to this number" rather
-  // than something invoice-specific. A `documentType: 'return'` field is
-  // included so the backend can branch on it (e.g. a different message
-  // template) if needed — confirm with the backend whether that's honored,
-  // or whether a dedicated endpoint (e.g. /send-return) should be used instead.
+  // ── Send the customer a WhatsApp text with their digital bill link ──
+  // Same flow as InvoiceBill (/send-text with a digital-bill link).
+  const DIGITAL_BILL_BASE_URL = 'https://gripstyle.in/user'; // ← needs your real hosted-bill URL pattern
+
   const handleSendWhatsApp = async () => {
     const phoneNumber = customerMobile;
 
@@ -175,24 +191,21 @@ function ReturnBill({ returnData, onClose }) {
     }
 
     setIsSendingWhatsApp(true);
-    setWhatsappStatus('Generating PDF...');
+    setWhatsappStatus('Sending via WhatsApp...');
 
     try {
-      const pdfBlob = await generateReturnPdfBlob();
-      if (!pdfBlob) throw new Error('Could not generate return PDF.');
+      const billLink = `${DIGITAL_BILL_BASE_URL}`;
+      const message =
+        `Dear Customer,\n` +
+        `Thanks for shopping at GripStyle. As part of our green initiative, your digital bill awaits: ${billLink}\n` +
+        `Happy Shopping!.\n\n` +
+        `Return Invoice Number: ${returnInvoiceNumber}\n` +
+        `Total Refund Amount (credited to wallet): ₹${resolvedTotal.toFixed(2)}`;
 
-      setWhatsappStatus('Sending via WhatsApp...');
-
-      const formData = new FormData();
-      formData.append('phoneNumber', phoneNumber);
-      formData.append('invoiceNumber', returnInvoiceNumber);
-      formData.append('customerName', customerName ?? '');
-      formData.append('documentType', 'return');
-      formData.append('invoicePdf', pdfBlob, `Return_${returnInvoiceNumber}.pdf`);
-
-      const res = await fetch(`${WA_SERVICE_URL}/send-invoice`, {
+      const res = await fetch(`${WA_SERVICE_URL}/send-text`, { // ← confirm this path
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber, message }),
       });
       const data = await res.json();
 
@@ -214,7 +227,7 @@ function ReturnBill({ returnData, onClose }) {
       <div style={styles.modalWindow}>
         <div id="return-print-area" style={styles.printArea}>
 
-          {/* Header Section — mirrors InvoiceBill's header exactly */}
+          {/* Header Section */}
           <div style={styles.header}>
             <img
               src={GripStyleLogo}
@@ -247,7 +260,7 @@ function ReturnBill({ returnData, onClose }) {
             <p style={styles.legalRow}>CIN: U47711WB2026PTC286757</p>
           </div>
 
-          <h2 style={styles.returnInvoiceTitle}>RETURN INVOICE</h2>
+          <h2 style={styles.taxInvoiceTitle}>RETURN INVOICE</h2>
 
           <div style={styles.metaRow}>
             <span>RETURN INVOICE NO.: {returnInvoiceNumber}</span>
@@ -264,54 +277,74 @@ function ReturnBill({ returnData, onClose }) {
           )}
 
           <div style={styles.customerBlock}>
+            {customerId != null && (
+              <p style={styles.customerRow}>CUSTOMER ID: {customerId}</p>
+            )}
             <p style={styles.customerRow}>CUSTOMER NAME: {customerName ?? 'WALK-IN'}</p>
             <p style={styles.customerRow}>MOBILE NO: {customerMobile ?? '-'}</p>
           </div>
 
-          {/* Returned Items Table — same visual pattern as InvoiceBill's
-              main items table (a "code" row + a description sub-row per
-              item), just without CGST grouping or MRP/discount columns
-              since a return doesn't carry that breakdown. */}
+          {/* Main Items Table — same 5-column layout as InvoiceBill, grouped
+              by CGST/SGST rate, with a description / HSN / taxable sub-row. */}
           <table style={styles.table}>
             <colgroup>
-              <col style={{ width: '40%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '20%' }} />
+              <col style={{ width: '35%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '15%' }} />
               <col style={{ width: '20%' }} />
             </colgroup>
             <thead>
               <tr>
                 <th style={styles.th}>Item</th>
-                <th style={styles.th}>QTY</th>
+                <th style={styles.th}>QTY/Unit</th>
                 <th style={{...styles.th, textAlign: 'right'}}>Price</th>
-                <th style={{...styles.th, textAlign: 'right'}}>Line Total</th>
+                <th style={{...styles.th, textAlign: 'right'}}>Disc.Amt</th>
+                <th style={{...styles.th, textAlign: 'right'}}>Net.Amt</th>
+              </tr>
+              <tr>
+                <th style={styles.thSub}>Description</th>
+                <th style={styles.thSub}>HSN-SAC</th>
+                <th style={styles.thSub}></th>
+                <th style={{...styles.thSub, textAlign: 'right'}} colSpan={2}>Taxable Amount</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
-                <React.Fragment key={item.productId}>
+              {sortedRates.map((rate, groupIdx) => (
+                <React.Fragment key={rate}>
                   <tr>
-                    <td style={styles.td}>{item.barcode ?? item.productId}</td>
-                    <td style={styles.td}>{item.quantity} PC</td>
-                    <td style={{...styles.td, textAlign: 'right'}}>₹{Number(item.salePrice).toFixed(2)}</td>
-                    <td style={{...styles.td, textAlign: 'right'}}>₹{Number(item.lineTotal).toFixed(2)}</td>
+                    <td colSpan={5} style={styles.groupHeaderCell}>
+                      {groupLabels[groupIdx] ?? groupIdx + 1}) CGST@{rate}% SGST@{rate}%
+                    </td>
                   </tr>
-                  <tr>
-                    <td style={styles.tdSub} colSpan={4}>{item.productName}</td>
-                  </tr>
+                  {rateGroups[rate].map((item, i) => (
+                    <React.Fragment key={`${item.productId}-${i}`}>
+                      <tr>
+                        <td style={styles.td}>{item.barcode ?? item.productId}</td>
+                        <td style={styles.td}>{item.quantity} PC</td>
+                        <td style={{...styles.td, textAlign: 'right'}}>₹{item.mrp.toFixed(2)}</td>
+                        <td style={{...styles.td, textAlign: 'right'}}>₹{item.itemDiscount.toFixed(2)}</td>
+                        <td style={{...styles.td, textAlign: 'right'}}>₹{item.itemTotal.toFixed(2)}</td>
+                      </tr>
+                      <tr>
+                        <td style={styles.tdSub}>{item.productName ?? item.name}</td>
+                        <td style={styles.tdSub}>{item.hsn}</td>
+                        <td style={styles.tdSub}></td>
+                        <td style={{...styles.tdSub, textAlign: 'right'}} colSpan={2}>₹{item.itemTaxable.toFixed(2)}</td>
+                      </tr>
+                    </React.Fragment>
+                  ))}
                 </React.Fragment>
               ))}
             </tbody>
           </table>
 
-          <div style={styles.countsRow}>
-            <span>NO OF ITEMS: {items.length}</span>
-            <span>TOTAL QTY: {totalQty}</span>
+          {/* Totals Section */}
+          <div style={styles.totalsBlock}>
+            <div style={styles.summaryRow}><span>Gross Total:</span><span>₹{grossTotal.toFixed(2)}</span></div>
+            <div style={styles.summaryTotal}><span>Total Return Amount:</span><span>₹{resolvedTotal.toFixed(2)}</span></div>
           </div>
 
-          {/* ── Tax Details — same table structure/columns as InvoiceBill,
-              placed here (above the payment/wallet area) to mirror where
-              InvoiceBill places it relative to its own Tender Detail. */}
           <h3 style={styles.subTitle}>Tax Details</h3>
           <table style={styles.table}>
             <thead>
@@ -346,42 +379,47 @@ function ReturnBill({ returnData, onClose }) {
             </tbody>
           </table>
 
-          {/* ── Wallet Update — replaces InvoiceBill's Tender Detail
-              section. Shows the customer's wallet balance moving from its
-              pre-return value up to the post-credit value, with a stamp
-              overlay in the same spot InvoiceBill uses for its
-              "YOU SAVED" stamp. */}
-          <h3 style={styles.subTitle}>Wallet Update</h3>
-          <div style={styles.walletWrap}>
-            <div style={styles.walletCreditedStampOverlay}>
-              <div style={styles.walletCreditedStamp}>
-                <div style={styles.walletStampStars}>★ ★ ★</div>
-                <div style={styles.walletStampLabel}>RETURNED</div>
-                <div style={styles.walletStampStars}>★ ★ ★</div>
+          {/* Wallet Update — takes the place of InvoiceBill's Tender Detail,
+              with the same grid rows and a centered stamp overlay. */}
+          <div>
+            <h3 style={styles.subTitle}>Wallet Update</h3>
+            <div style={styles.paymentsWrap}>
+              <div style={styles.stampOverlay}>
+                <div style={styles.returnStamp}>
+                  <div style={styles.stampStars}>★ ★ ★</div>
+                  <div style={styles.stampLabel}>RETURNED</div>
+                  <div style={styles.stampAmount}>₹{resolvedTotal.toFixed(2)}</div>
+                  <div style={styles.stampStars}>★ ★ ★</div>
+                </div>
               </div>
-            </div>
-            <div style={styles.walletBlock}>
-              <div style={styles.walletRow}>
-                <span>PREVIOUS WALLET BALANCE</span>
-                <span></span>
-                <span style={styles.walletRowAmount}>₹{resolvedPreviousBalance.toFixed(2)}</span>
-              </div>
-              <div style={styles.walletRow}>
-                <span>AMOUNT CREDITED (THIS RETURN)</span>
-                <span></span>
-                <span style={styles.walletRowAmount}>₹{Number(totalAmount).toFixed(2)}</span>
-              </div>
-              <div style={styles.walletRowTotal}>
-                <span>UPDATED WALLET BALANCE</span>
-                <span></span>
-                <span style={styles.walletRowAmount}>₹{Number(updatedCustomerBalance ?? resolvedPreviousBalance + Number(totalAmount)).toFixed(2)}</span>
+              <div style={styles.paymentsBlock}>
+                <div style={styles.tenderRow}>
+                  <span>PREVIOUS WALLET BALANCE</span>
+                  <span></span>
+                  <span style={styles.tenderRowAmount}>₹{resolvedPreviousBalance.toFixed(2)}</span>
+                </div>
+                <div style={styles.tenderRow}>
+                  <span>AMOUNT CREDITED (THIS RETURN)</span>
+                  <span></span>
+                  <span style={styles.tenderRowAmount}>₹{resolvedTotal.toFixed(2)}</span>
+                </div>
+                <div style={styles.tenderRowTotal}>
+                  <span>UPDATED WALLET BALANCE</span>
+                  <span></span>
+                  <span style={styles.tenderRowAmount}>₹{resolvedUpdatedBalance.toFixed(2)}</span>
+                </div>
               </div>
             </div>
           </div>
 
+          <div style={styles.countsRow}>
+            <span>NO OF ITEMS: {items.length}</span>
+            <span>TOTAL QTY: {totalQty}</span>
+          </div>
+
           <ul style={styles.termsList}>
             <li>The refunded amount has been credited to the customer's wallet balance and can be redeemed against a future purchase.</li>
-            <li>Please retain this return receipt for your records.</li>
+            <li>Please retain this return receipt along with the original invoice for your records.</li>
           </ul>
 
           <div style={styles.barcodeContainer}>
@@ -428,10 +466,10 @@ const styles = {
     borderRadius: '8px', boxShadow: '0 8px 35px rgba(0,0,0,0.2)'
   },
   header: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    textAlign: "center",
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
     marginBottom: '15px'
   },
   logo: { width: '250px', objectFit: 'contain', marginBottom: '5px' },
@@ -439,7 +477,7 @@ const styles = {
   address: { margin: 0, fontSize: '0.85rem', color: '#333' },
   legalBlock: { textAlign: 'center', padding: '10px 0', marginBottom: '10px' },
   legalRow: { margin: '2px 0', fontSize: '0.8rem', color: '#333' },
-  returnInvoiceTitle: { textAlign: 'center', margin: '0 0 15px 0', fontSize: '1.1rem', fontWeight: 'bold', color: '#dc3545' },
+  taxInvoiceTitle: { textAlign: 'center', margin: '0 0 15px 0', fontSize: '1.1rem', fontWeight: 'bold' },
   metaRow: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '2px' },
   metaAgainstRow: { fontSize: '0.85rem', marginBottom: '2px' },
   metaSubRow: { display: 'flex', justifyContent: 'flex-end', fontSize: '0.78rem', color: '#666', marginBottom: '10px' },
@@ -447,22 +485,25 @@ const styles = {
   customerRow: { margin: '2px 0', fontSize: '0.85rem' },
   table: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '0.85rem' },
   th: { borderBottom: '1px solid #000', padding: '6px 2px', textAlign: 'left', fontWeight: 'bold' },
+  thSub: { borderBottom: '1px solid #000', padding: '2px 2px 6px 2px', color: '#555', textAlign: 'left', fontWeight: 'normal', fontSize: '0.75rem' },
   td: { padding: '6px 2px 2px 2px', textAlign: 'left' },
   tdSub: { padding: '0 2px 8px 2px', borderBottom: '1px dashed #ccc', color: '#333', textAlign: 'left', fontSize: '0.8rem' },
-  // Matches InvoiceBill's tdTotal — used for the Tax Details "Total" row.
   tdTotal: { padding: '8px 2px', borderTop: '1px solid #000', borderBottom: '1px solid #000', fontWeight: 'bold' },
-  countsRow: { display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 'bold', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '8px 0', marginBottom: '15px' },
+  groupHeaderCell: { padding: '10px 2px 4px 2px', fontWeight: 'bold' },
+  totalsBlock: { marginBottom: '15px' },
+  summaryRow: { display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px' },
+  summaryTotal: { display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1rem', borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '8px', marginBottom: '8px' },
   subTitle: { fontSize: '0.95rem', margin: '0 0 8px 0', fontWeight: 'bold' },
-  // Grid layout (label | reserved gap | amount), same trick InvoiceBill uses
-  // for its tender rows, so the stamp overlay never collides with text.
-  walletRow: {
+  paymentsBlock: { marginTop: '10px', marginBottom: '15px', position: 'relative', zIndex: 1 },
+  // Grid layout (label | reserved gap | amount) so the stamp overlay never
+  // collides with either column — same trick InvoiceBill uses.
+  tenderRow: {
     display: 'grid',
     gridTemplateColumns: '1fr 104px 1fr',
     fontSize: '0.9rem',
-    marginBottom: '4px',
-    color: '#333'
+    marginBottom: '4px'
   },
-  walletRowTotal: {
+  tenderRowTotal: {
     display: 'grid',
     gridTemplateColumns: '1fr 104px 1fr',
     fontSize: '0.95rem',
@@ -471,10 +512,9 @@ const styles = {
     paddingTop: '8px',
     marginTop: '4px'
   },
-  walletRowAmount: { textAlign: 'right' },
-  walletWrap: { position: 'relative' },
-  walletBlock: { marginTop: '10px', marginBottom: '15px', position: 'relative', zIndex: 1 },
-  walletCreditedStampOverlay: {
+  tenderRowAmount: { textAlign: 'right' },
+  paymentsWrap: { position: 'relative' },
+  stampOverlay: {
     position: 'absolute',
     top: '50%',
     left: '50%',
@@ -482,7 +522,7 @@ const styles = {
     zIndex: 2,
     pointerEvents: 'none'
   },
-  walletCreditedStamp: {
+  returnStamp: {
     width: '96px',
     height: '96px',
     borderRadius: '50%',
@@ -497,9 +537,10 @@ const styles = {
     fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif",
     opacity: 0.85
   },
-  walletStampStars: { fontSize: '0.45rem', letterSpacing: '1.5px', lineHeight: 1 },
-  walletStampLabel: { fontSize: '0.58rem', fontWeight: 'bold', letterSpacing: '0.8px', margin: '3px 0' },
-  walletStampAmount: { fontSize: '0.82rem', fontWeight: 900, letterSpacing: '0.3px' },
+  stampStars: { fontSize: '0.45rem', letterSpacing: '1.5px', lineHeight: 1 },
+  stampLabel: { fontSize: '0.58rem', fontWeight: 'bold', letterSpacing: '0.8px', margin: '3px 0' },
+  stampAmount: { fontSize: '0.82rem', fontWeight: 900, letterSpacing: '0.3px' },
+  countsRow: { display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 'bold', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '8px 0', marginBottom: '15px' },
   termsList: { fontSize: '0.75rem', color: '#333', paddingLeft: '15px', marginBottom: '15px', lineHeight: '1.4' },
   barcodeContainer: { display: 'flex', justifyContent: 'center', marginTop: '10px' },
   printArea: { padding: '8px 28px 24px 28px' },

@@ -167,47 +167,47 @@ function InvoiceBill({ invoice, onClose }) {
   };
 
   // ── Generate the PDF client-side and upload it to the WhatsApp service ──
-  const handleSendWhatsApp = async () => {
-    const phoneNumber = customer?.mobileNumber ?? customer?.phoneNumber;
+ const DIGITAL_BILL_BASE_URL = 'https://gripstyle.in/user'; // ← needs your real hosted-invoice URL pattern
 
-    if (!phoneNumber) {
-      setWhatsappStatus('❌ No phone number on file for this customer.');
-      return;
+const handleSendWhatsApp = async () => {
+  const phoneNumber = customer?.mobileNumber ?? customer?.phoneNumber;
+
+  if (!phoneNumber) {
+    setWhatsappStatus('❌ No phone number on file for this customer.');
+    return;
+  }
+
+  setIsSendingWhatsApp(true);
+  setWhatsappStatus('Sending via WhatsApp...');
+
+  try {
+    const billLink = `${DIGITAL_BILL_BASE_URL}`;
+    const message =
+      `Dear Customer,\n` +
+      `Thanks for shopping at GripStyle. As part of our green initiative, your digital bill awaits: ${billLink}\n` +
+      `Happy Shopping!.\n\n` +
+      `Invoice Number: ${invoiceNumber}\n` +
+      `Total Payable Amount: ₹${payableAmount.toFixed(2)}`;
+
+    const res = await fetch(`${WA_SERVICE_URL}/send-text`, { // ← confirm this path
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phoneNumber, message }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      setWhatsappStatus('✅ Invoice sent via WhatsApp');
+    } else {
+      setWhatsappStatus(`❌ ${data.message}`);
     }
-
-    setIsSendingWhatsApp(true);
-    setWhatsappStatus('Generating PDF...');
-
-    try {
-      const pdfBlob = await generateInvoicePdfBlob();
-      if (!pdfBlob) throw new Error('Could not generate invoice PDF.');
-
-      setWhatsappStatus('Sending via WhatsApp...');
-
-      const formData = new FormData();
-      formData.append('phoneNumber', phoneNumber);
-      formData.append('invoiceNumber', invoiceNumber);
-      formData.append('customerName', customer?.customerName ?? customer?.name ?? '');
-      formData.append('invoicePdf', pdfBlob, `Invoice_${invoiceNumber}.pdf`);
-
-      const res = await fetch(`${WA_SERVICE_URL}/send-invoice`, {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setWhatsappStatus('✅ Invoice sent via WhatsApp');
-      } else {
-        setWhatsappStatus(`❌ ${data.message}`);
-      }
-    } catch (err) {
-      console.error('WhatsApp send error:', err);
-      setWhatsappStatus(`⚠️ Failed to send: ${err.message}`);
-    } finally {
-      setIsSendingWhatsApp(false);
-    }
-  };
+  } catch (err) {
+    console.error('WhatsApp send error:', err);
+    setWhatsappStatus(`⚠️ Failed to send: ${err.message}`);
+  } finally {
+    setIsSendingWhatsApp(false);
+  }
+};
 
   return (
     <div style={styles.overlay}>
@@ -300,15 +300,14 @@ function InvoiceBill({ invoice, onClose }) {
                   {rateGroups[rate].map(withItemMath).map((item) => (
                     <React.Fragment key={item.id}>
                       <tr>
-                        <td >{item.name}</td>
-                        
+                        <td style={styles.td}>{item.barcode ?? item.id}</td>
                         <td style={styles.td}>{item.quantity} PC</td>
                         <td style={{...styles.td, textAlign: 'right'}}>₹{item.mrp.toFixed(2)}</td>
                         <td style={{...styles.td, textAlign: 'right'}}>₹{item.itemDiscount.toFixed(2)}</td>
                         <td style={{...styles.td, textAlign: 'right'}}>₹{item.itemTotal.toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td style={styles.tdSub}></td>
+                        <td style={styles.tdSub}>{item.name}</td>
                         <td style={styles.tdSub}>{item.hsn}</td>
                         <td style={styles.tdSub}></td>
                         <td style={{...styles.tdSub, textAlign: 'right'}} colSpan={2}>₹{item.itemTaxable.toFixed(2)}</td>
