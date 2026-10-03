@@ -322,8 +322,7 @@ function Report() {
           </div>
 
           <div style={styles.totalRow}>
-            <span>Total Collected</span>
-            <span style={styles.totalAmount}>₹{netTotalCollected.toFixed(2)}</span>
+           
           </div>
           <p style={styles.totalNote}>
             Excludes ₹{walletAmount.toFixed(2)} in wallet payments (already counted when the wallet was funded).
