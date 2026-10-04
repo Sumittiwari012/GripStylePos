@@ -132,7 +132,7 @@
 }
 
 .pdt-shell {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* The old .pdt-navbar was built for a horizontal bar: centered

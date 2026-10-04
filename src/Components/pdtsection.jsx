@@ -27,12 +27,77 @@ const NAV_ICONS = {
 
 const COLUMN_OPTIONS = [2, 3, 4];
 
+const PINNED_KEY = 'pinnedProductIds';
+
+// The top area (bar + pinned products) stays at the top of the screen while
+// the page scrolls, whether the product grid is shown or hidden.
+const stickyWrapStyle = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 5,
+  background: '#fff',
+  borderBottom: '1px solid #e5e7eb',
+  boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
+};
+
+const barStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  flexWrap: 'wrap',
+  padding: '10px 12px'
+};
+
+const pinnedStripStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '0 12px 10px',
+  overflowX: 'auto'
+};
+
+const chipStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '8px',
+  flexShrink: 0,
+  padding: '6px 8px 6px 12px',
+  border: '1px solid #16a34a',
+  borderRadius: '999px',
+  background: '#f0fdf4',
+  fontSize: '0.82rem',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap'
+};
+
+const chipRemoveStyle = {
+  border: 'none',
+  background: 'transparent',
+  color: '#6b7280',
+  fontSize: '1rem',
+  lineHeight: 1,
+  cursor: 'pointer',
+  padding: '0 2px'
+};
+
 // ─────────────────────────────────────────────────────────
 // Product Listing — its own component, its own div.
-// Collapsed by default so the full catalog isn't sitting on
-// screen all the time; opens on demand via the toggle button.
+// The top area (toggle, columns, search and the PINNED products) is always
+// visible. Pin a product with the 📌 on its card and it stays in the pinned
+// strip, one click from the cart, so it never has to be searched again.
+// The product grid below is collapsed by default and opens on demand
+// (or as soon as you type in the search). Pins are saved on this computer.
 // ─────────────────────────────────────────────────────────
-function ProductListing({ products, loading, fetchError, onAddToCart, columnCount, onColumnCountChange }) {
+function ProductListing({
+  products,
+  loading,
+  fetchError,
+  onAddToCart,
+  columnCount,
+  onColumnCountChange,
+  pinnedIds,
+  onTogglePin
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -40,46 +105,103 @@ function ProductListing({ products, loading, fetchError, onAddToCart, columnCoun
     (product.productName ?? '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // keep the order the cashier pinned them in; skip products that no longer exist
+  const pinnedProducts = pinnedIds
+    .map((id) => products.find((p) => String(p.id) === id))
+    .filter(Boolean);
+
   return (
     <div className="pdt-product-listing">
-      <div className="pdt-listing-header">
-        <h2 className="pdt-heading">Current Listings</h2>
-        <button
-          type="button"
-          className="pdt-toggle-btn"
-          onClick={() => setIsOpen((prev) => !prev)}
-        >
-          {isOpen ? 'Hide Products' : 'Show Products'}
-        </button>
+      {/* Pinned area: always visible, whether the grid is open or hidden */}
+      <div style={stickyWrapStyle}>
+        <div className="pdt-listing-header" style={barStyle}>
+          <h2 className="pdt-heading" style={{ margin: 0 }}>Current Listings</h2>
 
-        <div className="pdt-column-select">
-          <label htmlFor="pdt-columns">Columns:</label>
-          <select
-            id="pdt-columns"
-            value={columnCount}
-            onChange={(e) => onColumnCountChange(Number(e.target.value))}
+          <button
+            type="button"
+            className="pdt-toggle-btn"
+            onClick={() => setIsOpen((prev) => !prev)}
           >
-            {COLUMN_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+            {isOpen ? 'Hide Products' : 'Show Products'}
+          </button>
+
+          <div className="pdt-column-select">
+            <label htmlFor="pdt-columns">Columns:</label>
+            <select
+              id="pdt-columns"
+              value={columnCount}
+              onChange={(e) => onColumnCountChange(Number(e.target.value))}
+            >
+              {COLUMN_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <input
+            type="text"
+            placeholder="Search listings..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              if (e.target.value) setIsOpen(true); // typing opens the grid
+            }}
+            className="pdt-search-input"
+            style={{ flex: 1, minWidth: '140px' }}
+          />
+        </div>
+
+        <div style={pinnedStripStyle}>
+          <span style={{ fontSize: '0.8rem', color: '#6b7280', flexShrink: 0 }}>📌 Pinned:</span>
+
+          {pinnedProducts.length === 0 && (
+            <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+              Nothing pinned yet. Open the products and click 📌 on a card to pin it here.
+            </span>
+          )}
+
+          {pinnedProducts.map((product) => {
+            const salePrice = Number(product.retailSalePrice) || 0;
+            return (
+              <div
+                key={product.id}
+                style={chipStyle}
+                role="button"
+                tabIndex={0}
+                title="Click to add to the cart"
+                onClick={() => onAddToCart(product)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onAddToCart(product);
+                  }
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>{product.productName}</span>
+                <span style={{ color: '#16a34a', fontWeight: 700 }}>₹{salePrice.toFixed(2)}</span>
+                <button
+                  type="button"
+                  title="Unpin"
+                  aria-label={`Unpin ${product.productName}`}
+                  style={chipRemoveStyle}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePin(product.id);
+                  }}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {isOpen && (
         <>
-          <div className="pdt-search-wrap">
-            <input
-              type="text"
-              placeholder="Search listings..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pdt-search-input"
-            />
-          </div>
-
           {loading && <p className="pdt-status-text">Loading products...</p>}
           {fetchError && <p className="pdt-error-text">{fetchError}</p>}
 
@@ -93,11 +215,13 @@ function ProductListing({ products, loading, fetchError, onAddToCart, columnCoun
                   const salePrice = Number(product.retailSalePrice) || 0;
                   const mrp = Number(product.mrp) || 0;
                   const hasDiscount = mrp > salePrice;
+                  const isPinned = pinnedIds.includes(String(product.id));
 
                   return (
                     <div
                       key={product.id}
                       className="pdt-card pdt-card--clickable"
+                      style={{ position: 'relative' }}
                       role="button"
                       tabIndex={0}
                       onClick={() => onAddToCart(product)}
@@ -108,7 +232,33 @@ function ProductListing({ products, loading, fetchError, onAddToCart, columnCoun
                         }
                       }}
                     >
-                      <h3 className="pdt-card-title">{product.productName}</h3>
+                      <button
+                        type="button"
+                        title={isPinned ? 'Unpin' : 'Pin to the top'}
+                        aria-label={isPinned ? `Unpin ${product.productName}` : `Pin ${product.productName}`}
+                        aria-pressed={isPinned}
+                        onClick={(e) => {
+                          e.stopPropagation(); // don't add to the cart
+                          onTogglePin(product.id);
+                        }}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          fontSize: '1.05rem',
+                          lineHeight: 1,
+                          opacity: isPinned ? 1 : 0.35,
+                          filter: isPinned ? 'none' : 'grayscale(1)'
+                        }}
+                      >
+                        📌
+                      </button>
+
+                      <h3 className="pdt-card-title" style={{ paddingRight: 24 }}>{product.productName}</h3>
                       <p className="pdt-card-row">Barcode: {product.barcode}</p>
 
                       <div className="pdt-card-price-row">
@@ -150,6 +300,25 @@ function Pdtsection() {
     return localStorage.getItem('isFrozen') === 'true';
   });
   const [cart, setCart] = useState([]);
+
+  // Pinned products (ids), saved on this computer so they survive a refresh
+  const [pinnedIds, setPinnedIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PINNED_KEY) || '[]');
+      return Array.isArray(saved) ? saved.map(String) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleTogglePin = (id) => {
+    setPinnedIds((prev) => {
+      const key = String(id);
+      const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key];
+      try { localStorage.setItem(PINNED_KEY, JSON.stringify(next)); } catch { /* storage full or blocked */ }
+      return next;
+    });
+  };
 
   const handleAddToCart = (product) => {
     const salePrice = Number(product.retailSalePrice) || 0;
@@ -446,6 +615,8 @@ function Pdtsection() {
                 onAddToCart={handleAddToCart}
                 columnCount={columnCount}
                 onColumnCountChange={setColumnCount}
+                pinnedIds={pinnedIds}
+                onTogglePin={handleTogglePin}
               />
             </main>
           )}
