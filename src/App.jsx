@@ -18,6 +18,7 @@ function App() {
             <Route path="/offers" element={<Offers />} />
             <Route path="/offers/coupon" element={<CouponVoucher/>}/>
             <Route path="/Sales" element={<CategorySalesDashboard />} />
+            
         </Routes>
   )
 }
