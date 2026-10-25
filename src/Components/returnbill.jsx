@@ -4,8 +4,8 @@ import Barcode from 'react-barcode';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-// Same Baileys WhatsApp service used by InvoiceBill.
-const WA_SERVICE_URL = 'https://lightsalmon-pigeon-313595.hostingersite.com';
+// Official Meta WhatsApp Cloud API is called securely by the backend.
+const WHATSAPP_API_URL = 'https://gripstyleapi.runasp.net/api/WhatsAppMessage/SendReturn';
 
 function ReturnBill({ returnData, onClose }) {
   const {
@@ -180,43 +180,42 @@ function ReturnBill({ returnData, onClose }) {
 
   // ── Send the customer a WhatsApp text with their digital bill link ──
   // Same flow as InvoiceBill (/send-text with a digital-bill link).
-  const DIGITAL_BILL_BASE_URL = 'https://gripstyle.in/user'; // ← needs your real hosted-bill URL pattern
-
   const handleSendWhatsApp = async () => {
     const phoneNumber = customerMobile;
 
     if (!phoneNumber) {
-      setWhatsappStatus('❌ No phone number on file for this customer.');
+      setWhatsappStatus('No phone number on file for this customer.');
       return;
     }
 
     setIsSendingWhatsApp(true);
-    setWhatsappStatus('Sending via WhatsApp...');
+    setWhatsappStatus('Sending return template via official WhatsApp Cloud API...');
 
     try {
-      const billLink = `${DIGITAL_BILL_BASE_URL}`;
-      const message =
-        `Dear Customer,\n` +
-        `Thanks for shopping at GripStyle. As part of our green initiative, your digital bill awaits: ${billLink}\n` +
-        `Happy Shopping!.\n\n` +
-        `Return Invoice Number: ${returnInvoiceNumber}\n` +
-        `Total Refund Amount (credited to wallet): ₹${resolvedTotal.toFixed(2)}`;
-
-      const res = await fetch(`${WA_SERVICE_URL}/send-text`, { // ← confirm this path
+      const res = await fetch(WHATSAPP_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber, message }),
+        body: JSON.stringify({
+          phoneNumber,
+          returnInvoiceNumber,
+          refundAmount: Number(resolvedTotal)
+        })
       });
-      const data = await res.json();
 
-      if (data.success) {
-        setWhatsappStatus('✅ Return receipt sent via WhatsApp');
-      } else {
-        setWhatsappStatus(`❌ ${data.message}`);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || data.message || `Request failed (${res.status})`);
       }
+
+      setWhatsappStatus(
+        data.status === 'Submitted'
+          ? `Return template accepted by Meta${data.messageId ? ` (ID: ${data.messageId})` : ''}.`
+          : `Message result: ${data.status || 'Unknown'}`
+      );
     } catch (err) {
-      console.error('WhatsApp send error:', err);
-      setWhatsappStatus(`⚠️ Failed to send: ${err.message}`);
+      console.error('Official WhatsApp return send error:', err);
+      setWhatsappStatus(`Failed to send return: ${err.message}`);
     } finally {
       setIsSendingWhatsApp(false);
     }

@@ -4,8 +4,8 @@ import Barcode from 'react-barcode';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-// Same Baileys WhatsApp service used elsewhere in the app.
-const WA_SERVICE_URL = 'https://lightsalmon-pigeon-313595.hostingersite.com';
+// Official Meta WhatsApp Cloud API is called securely by the backend.
+const WHATSAPP_API_URL = 'https://gripstyleapi.runasp.net/api/WhatsAppMessage/SendInvoice';
 
 function InvoiceBill({ invoice, onClose }) {
   const { invoiceNumber, customer, cart, totalAmount, discount, taxAmount, payableAmount, payments, completedAt } = invoice;
@@ -167,43 +167,42 @@ function InvoiceBill({ invoice, onClose }) {
   };
 
   // ── Generate the PDF client-side and upload it to the WhatsApp service ──
- const DIGITAL_BILL_BASE_URL = 'https://gripstyle.in/user'; // ← needs your real hosted-invoice URL pattern
-
 const handleSendWhatsApp = async () => {
   const phoneNumber = customer?.mobileNumber ?? customer?.phoneNumber;
 
   if (!phoneNumber) {
-    setWhatsappStatus('❌ No phone number on file for this customer.');
+    setWhatsappStatus('No phone number on file for this customer.');
     return;
   }
 
   setIsSendingWhatsApp(true);
-  setWhatsappStatus('Sending via WhatsApp...');
+  setWhatsappStatus('Sending invoice template via official WhatsApp Cloud API...');
 
   try {
-    const billLink = `${DIGITAL_BILL_BASE_URL}`;
-    const message =
-      `Dear Customer,\n` +
-      `Thanks for shopping at GripStyle. As part of our green initiative, your digital bill awaits: ${billLink}\n` +
-      `Happy Shopping!.\n\n` +
-      `Invoice Number: ${invoiceNumber}\n` +
-      `Total Payable Amount: ₹${payableAmount.toFixed(2)}`;
-
-    const res = await fetch(`${WA_SERVICE_URL}/send-text`, { // ← confirm this path
+    const res = await fetch(WHATSAPP_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phoneNumber, message }),
+      body: JSON.stringify({
+        phoneNumber,
+        invoiceNumber,
+        payableAmount: Number(payableAmount)
+      })
     });
-    const data = await res.json();
 
-    if (data.success) {
-      setWhatsappStatus('✅ Invoice sent via WhatsApp');
-    } else {
-      setWhatsappStatus(`❌ ${data.message}`);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.error || data.message || `Request failed (${res.status})`);
     }
+
+    setWhatsappStatus(
+      data.status === 'Submitted'
+        ? `Invoice template accepted by Meta${data.messageId ? ` (ID: ${data.messageId})` : ''}.`
+        : `Message result: ${data.status || 'Unknown'}`
+    );
   } catch (err) {
-    console.error('WhatsApp send error:', err);
-    setWhatsappStatus(`⚠️ Failed to send: ${err.message}`);
+    console.error('Official WhatsApp invoice send error:', err);
+    setWhatsappStatus(`Failed to send invoice: ${err.message}`);
   } finally {
     setIsSendingWhatsApp(false);
   }

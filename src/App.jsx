@@ -8,6 +8,7 @@ import Accounts from "./Components/accounts";
 import Offers from "./Components/Offers/Offers";
 import CouponVoucher from './Components/Offers/CouponVoucher';
 import CategorySalesDashboard from './Components/CategorySalesDashBoard/CategorySalesDashBoard';
+import WhatsAppCampaignManager from './Components/WhatsAppCampaignManager';
 
 function App() {
   
@@ -18,6 +19,7 @@ function App() {
             <Route path="/offers" element={<Offers />} />
             <Route path="/offers/coupon" element={<CouponVoucher/>}/>
             <Route path="/Sales" element={<CategorySalesDashboard />} />
+            <Route path="/whatsappcampaign" element={<WhatsAppCampaignManager />} />
             
         </Routes>
   )
