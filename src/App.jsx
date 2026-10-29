@@ -9,6 +9,7 @@ import Offers from "./Components/Offers/Offers";
 import CouponVoucher from './Components/Offers/CouponVoucher';
 import CategorySalesDashboard from './Components/CategorySalesDashBoard/CategorySalesDashBoard';
 import WhatsAppCampaignManager from './Components/WhatsAppCampaignManager';
+import Whatsapp from './Components/mfwp/whatsapp';
 
 function App() {
   
@@ -20,6 +21,7 @@ function App() {
             <Route path="/offers/coupon" element={<CouponVoucher/>}/>
             <Route path="/Sales" element={<CategorySalesDashboard />} />
             <Route path="/whatsappcampaign" element={<WhatsAppCampaignManager />} />
+            <Route path="/whatsapp" element={<Whatsapp />} />
             
         </Routes>
   )
