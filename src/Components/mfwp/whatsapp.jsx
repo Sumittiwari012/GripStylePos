@@ -121,38 +121,15 @@ function Avatar({ id, name, size = 49 }) {
   return u ? <img className="av" style={st} src={u} /> : <div className="av" style={st}>{(name || '?').replace(/^\+/, '#')[0].toUpperCase()}</div>;
 }
 
-function LinkScreen({ onReady, children }) {
-  const [st, setSt] = useState({ ready: false, qr: null });
-  const [err, setErr] = useState(false);
-  useEffect(() => {
-    let stop = false;
-    const tick = () => fetch(API + '/link/status').then((r) => r.json()).then((r) => {
-      if (stop) return;
-      setErr(false);
-      setSt(r);
-      if (r.ready) onReady();
-    }).catch(() => !stop && setErr(true));
-    tick();
-    const t = setInterval(tick, 3000);
-    return () => { stop = true; clearInterval(t); };
-  }, []);
+// Shown to a logged-in user while WhatsApp is not connected (linking is done in your other UI)
+function NotReady({ err, children }) {
   return (
     <div className="qr">
-      <h2>{err ? 'Server not reachable' : 'Link WhatsApp'}</h2>
-      {err
-        ? <p>Check that your server is running. Retrying…</p>
-        : st.qr
-          ? <><p>On the phone with WhatsApp, open Linked devices, tap Link a device and scan this code.</p><img src={st.qr} /></>
-          : <p>Preparing the QR code…</p>}
+      <h2>{err ? 'Server not reachable' : 'WhatsApp is not connected'}</h2>
+      <p>{err ? 'Check that your server is running.' : 'Ask the admin to link WhatsApp. This page updates by itself once it is connected.'}</p>
       {children}
     </div>
   );
-}
-
-// Before login: if WhatsApp is not linked anyone can scan the QR; once linked, show the login
-function Gate() {
-  const [linked, setLinked] = useState(false);
-  return linked ? <Login /> : <div className="app"><LinkScreen onReady={() => setLinked(true)} /></div>;
 }
 
 function Login() {
@@ -496,10 +473,10 @@ function App() {
   if (panel) return <div className="app"><Team team={team} setTeam={setTeam} onBack={() => setPanel(false)} /></div>;
   if (!st.ready) return (
     <div className="app">
-      <LinkScreen onReady={() => setSt((p) => ({ ...p, ready: true }))}>
+      <NotReady err={st.err}>
         {user?.role === 'admin' && <button className="btn alt" onClick={() => setPanel(true)}>Manage team</button>}
         <button className="btn alt" onClick={logout}>Log out</button>
-      </LinkScreen>
+      </NotReady>
     </div>
   );
   return (
@@ -516,7 +493,7 @@ export default function WhatsAppUI() {
   return (
     <>
       <style>{CSS}</style>
-      {TOKEN ? <App /> : <Gate />}
+      {TOKEN ? <App /> : <Login />}
     </>
   );
 }
