@@ -38,7 +38,7 @@ function Stats() {
       </div>
 
       <h3>By coworker</h3>
-      {!d.agents.length && <p className="empty">No coworkers yet. Add them in the Team tab.</p>}
+      {!d.agents.length && <p className="empty">No coworkers yet. </p>}
       {d.agents.map((a) => (
         <div className="trow" key={a.id}>
           <div>
@@ -60,7 +60,6 @@ function Stats() {
 }
 
 function Team({ team, setTeam, st }) {
-  const [f, setF] = useState({ name: '', phone: '' });
   const reload = () => api('/admin/users').then((r) => r.success && setTeam(r.users));
   useEffect(() => { reload(); }, []);
   const agents = team.filter((t) => t.role === 'agent');
@@ -72,11 +71,6 @@ function Team({ team, setTeam, st }) {
   };
   return (
     <div className="list pad">
-      <h3>Add coworker</h3>
-      <input className="url" placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-      <input className="url" placeholder="WhatsApp number (with country code)" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
-      <button className="btn" onClick={() => run(post('/admin/users', f), () => setF({ name: '', phone: '' }))}>Add coworker</button>
-
       <h3>Coworkers</h3>
       {!agents.length && <p className="empty">No coworkers yet.</p>}
       {agents.map((t) => (
