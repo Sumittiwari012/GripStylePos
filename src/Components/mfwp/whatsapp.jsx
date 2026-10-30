@@ -77,7 +77,10 @@ button{cursor:pointer}
 select.url{margin-bottom:12px}
 `;
 
-const API = 'https://firebrick-magpie-682590.hostingersite.com';
+// REST calls go through the Netlify proxy (/api/* -> Hostinger, see public/_redirects).
+// The socket connects directly, because Netlify cannot proxy WebSockets.
+const SERVER = 'https://firebrick-magpie-682590.hostingersite.com';
+const API = '/api';
 const enc = encodeURIComponent;
 let TOKEN = localStorage.getItem('wa_token') || '';
 const logoutLocal = () => { localStorage.removeItem('wa_token'); location.reload(); };
@@ -462,7 +465,7 @@ function App() {
       setSt((p) => ({ ...p, ready: r.ready }));
       if (r.user.role === 'admin') api('/admin/users').then((x) => x.success && setTeam(x.users));
     }).catch(() => setSt({ ready: false, qr: null, err: true }));
-    const s = io(API, { auth: { token: TOKEN } });
+    const s = io(SERVER, { auth: { token: TOKEN } });
     s.on('connect_error', (e) => (e.message === 'unauthorized' ? logoutLocal() : setSt((p) => (p.ready ? p : { ...p, err: true }))));
     s.on('connect', () => api('/chats').then((r) => r.success && setChats(r.chats)).catch(() => {}));
     s.on('status', setSt);
