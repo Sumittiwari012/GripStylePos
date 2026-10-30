@@ -77,7 +77,7 @@ button{cursor:pointer}
 select.url{margin-bottom:12px}
 `;
 
-const API = 'https://firebrick-magpie-682590.hostingersite.com'; // <-- put your server address here (no trailing slash)
+const API = 'https://firebrick-magpie-682590.hostingersite.com';
 const enc = encodeURIComponent;
 let TOKEN = localStorage.getItem('wa_token') || '';
 const logoutLocal = () => { localStorage.removeItem('wa_token'); location.reload(); };
@@ -118,22 +118,38 @@ function Avatar({ id, name, size = 49 }) {
   return u ? <img className="av" style={st} src={u} /> : <div className="av" style={st}>{(name || '?').replace(/^\+/, '#')[0].toUpperCase()}</div>;
 }
 
-function Qr({ qr, err, user, onTeam }) {
-  const admin = user?.role === 'admin';
+function LinkScreen({ onReady, children }) {
+  const [st, setSt] = useState({ ready: false, qr: null });
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let stop = false;
+    const tick = () => fetch(API + '/link/status').then((r) => r.json()).then((r) => {
+      if (stop) return;
+      setErr(false);
+      setSt(r);
+      if (r.ready) onReady();
+    }).catch(() => !stop && setErr(true));
+    tick();
+    const t = setInterval(tick, 3000);
+    return () => { stop = true; clearInterval(t); };
+  }, []);
   return (
     <div className="qr">
-      <h2>{err ? 'Server not reachable' : admin ? 'Link WhatsApp' : 'Not connected'}</h2>
+      <h2>{err ? 'Server not reachable' : 'Link WhatsApp'}</h2>
       {err
-        ? <><p>Check that your server is running and try again.</p><button className="btn" onClick={() => location.reload()}>Try again</button></>
-        : !admin
-          ? <p>WhatsApp is not connected right now. Please ask your admin to link it.</p>
-          : qr
-            ? <><p>On the phone with WhatsApp, open Linked devices, tap Link a device and scan this code.</p><img src={qr} /></>
-            : <p>Connecting to WhatsApp…</p>}
-      {admin && <button className="btn alt" onClick={onTeam}>Manage team</button>}
-      <button className="btn alt" onClick={logout}>Log out</button>
+        ? <p>Check that your server is running. Retrying…</p>
+        : st.qr
+          ? <><p>On the phone with WhatsApp, open Linked devices, tap Link a device and scan this code.</p><img src={st.qr} /></>
+          : <p>Preparing the QR code…</p>}
+      {children}
     </div>
   );
+}
+
+// Before login: if WhatsApp is not linked anyone can scan the QR; once linked, show the login
+function Gate() {
+  const [linked, setLinked] = useState(false);
+  return linked ? <Login /> : <div className="app"><LinkScreen onReady={() => setLinked(true)} /></div>;
 }
 
 function Login() {
@@ -475,7 +491,14 @@ function App() {
 
   if (!user && !st.err) return <div className="app"><div className="qr"><p>Loading…</p></div></div>;
   if (panel) return <div className="app"><Team team={team} setTeam={setTeam} onBack={() => setPanel(false)} /></div>;
-  if (!st.ready) return <div className="app"><Qr qr={st.qr} err={st.err} user={user} onTeam={() => setPanel(true)} /></div>;
+  if (!st.ready) return (
+    <div className="app">
+      <LinkScreen onReady={() => setSt((p) => ({ ...p, ready: true }))}>
+        {user?.role === 'admin' && <button className="btn alt" onClick={() => setPanel(true)}>Manage team</button>}
+        <button className="btn alt" onClick={logout}>Log out</button>
+      </LinkScreen>
+    </div>
+  );
   return (
     <div className="app">
       {active
@@ -490,7 +513,7 @@ export default function WhatsAppUI() {
   return (
     <>
       <style>{CSS}</style>
-      {TOKEN ? <App /> : <Login />}
+      {TOKEN ? <App /> : <Gate />}
     </>
   );
 }
