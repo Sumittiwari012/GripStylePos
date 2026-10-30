@@ -63,12 +63,32 @@ button{cursor:pointer}
 .btn{display:block;width:100%;background:var(--green);color:#fff;border-radius:24px;padding:12px;font-weight:600;margin-bottom:10px}
 .btn.alt{background:var(--panel);color:var(--tx)}
 .er{color:#c0392b;margin:12px 0 0!important;font-size:14px}
+.pad{padding:4px 16px 24px}
+.pad h3{font-size:15px;color:var(--teal);margin:20px 0 8px}
+.trow{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.trow>div{flex:1;min-width:0}
+.trow .url{width:auto;margin:0;max-width:150px}
+.trow small{display:block;color:var(--mu);font-size:12.5px;overflow-wrap:anywhere}
+.sm{background:var(--panel);border-radius:6px;padding:6px 10px;font-size:13px}
+.asg{max-width:120px;background:rgba(255,255,255,.18);color:#fff;border-radius:6px;padding:5px;font-size:13px}
+.asg option{color:#000}
+.tag{font-style:normal;font-size:11px;font-weight:500;background:#e7f7f1;color:var(--teal);padding:1px 7px;border-radius:8px;margin-left:6px}
+.by{font-size:11px;color:var(--mu);margin-top:2px}
+select.url{margin-bottom:12px}
 `;
 
 const API = 'https://firebrick-magpie-682590.hostingersite.com'; // <-- put your server address here (no trailing slash)
 const enc = encodeURIComponent;
-const api = (p, o) => fetch(API + p, o).then((r) => r.json());
-const post = (p, b) => api(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+let TOKEN = localStorage.getItem('wa_token') || '';
+const logoutLocal = () => { localStorage.removeItem('wa_token'); location.reload(); };
+const api = (p, o = {}) =>
+  fetch(API + p, { ...o, headers: { ...(o.headers || {}), Authorization: 'Bearer ' + TOKEN } }).then((r) => {
+    if (r.status === 401 && TOKEN) logoutLocal();
+    return r.json();
+  });
+const post = (p, b, method = 'POST') => api(p, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+const mediaSrc = (url) => API + url + (url.includes('?') ? '&' : '?') + 'token=' + TOKEN;
+const logout = async () => { await post('/auth/logout', {}).catch(() => {}); logoutLocal(); };
 const hm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const fmt = (t) => (new Date(t * 1000).toDateString() === new Date().toDateString() ? hm(t) : new Date(t * 1000).toLocaleDateString([], { day: '2-digit', month: 'short' }));
 const dl = (t) => {
@@ -98,22 +118,123 @@ function Avatar({ id, name, size = 49 }) {
   return u ? <img className="av" style={st} src={u} /> : <div className="av" style={st}>{(name || '?').replace(/^\+/, '#')[0].toUpperCase()}</div>;
 }
 
-function Qr({ qr, err }) {
+function Qr({ qr, err, user, onTeam }) {
+  const admin = user?.role === 'admin';
   return (
     <div className="qr">
-      <h2>{err ? 'Server not reachable' : 'Link WhatsApp'}</h2>
+      <h2>{err ? 'Server not reachable' : admin ? 'Link WhatsApp' : 'Not connected'}</h2>
       {err
-        ? <><p>Check that your server is running and that the address is correct.</p><button className="btn" onClick={() => location.reload()}>Try again</button></>
-        : qr
-          ? <><p>On the phone with WhatsApp, open Linked devices, tap Link a device and scan this code.</p><img src={qr} /></>
-          : <p>Connecting to WhatsApp…</p>}
+        ? <><p>Check that your server is running and try again.</p><button className="btn" onClick={() => location.reload()}>Try again</button></>
+        : !admin
+          ? <p>WhatsApp is not connected right now. Please ask your admin to link it.</p>
+          : qr
+            ? <><p>On the phone with WhatsApp, open Linked devices, tap Link a device and scan this code.</p><img src={qr} /></>
+            : <p>Connecting to WhatsApp…</p>}
+      {admin && <button className="btn alt" onClick={onTeam}>Manage team</button>}
+      <button className="btn alt" onClick={logout}>Log out</button>
     </div>
+  );
+}
+
+function Login() {
+  const [step, setStep] = useState(0);
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const call = async (path, body) => {
+    setBusy(true); setMsg('');
+    const r = await post(path, body).catch(() => ({ success: false, message: 'Cannot reach the server' }));
+    setBusy(false);
+    return r;
+  };
+  const send = async () => {
+    const r = await call('/auth/request-otp', { phone });
+    if (r.success) { setStep(1); setMsg(r.message); } else setMsg(r.message || 'Something went wrong');
+  };
+  const verify = async () => {
+    const r = await call('/auth/verify-otp', { phone, code });
+    if (r.success) { localStorage.setItem('wa_token', r.token); location.reload(); } else setMsg(r.message || 'Invalid code');
+  };
+  return (
+    <div className="app"><div className="qr">
+      <h2>Sign in</h2>
+      <p>{step ? 'Enter the 6-digit code we sent to your WhatsApp.' : 'Enter your WhatsApp number to get a login code on WhatsApp.'}</p>
+      {step
+        ? <input className="url" inputMode="numeric" maxLength={6} placeholder="123456" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => e.key === 'Enter' && verify()} />
+        : <input className="url" inputMode="tel" placeholder="Number with country code, e.g. 919876543210" value={phone} onChange={(e) => setPhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />}
+      <button className="btn" disabled={busy} onClick={step ? verify : send}>{step ? 'Verify' : 'Send code'}</button>
+      {step ? <button className="btn alt" onClick={() => { setStep(0); setCode(''); setMsg(''); }}>Use a different number</button> : null}
+      {msg && <p className="er" style={{ color: 'var(--mu)' }}>{msg}</p>}
+    </div></div>
+  );
+}
+
+function Team({ team, setTeam, onBack }) {
+  const [f, setF] = useState({ name: '', phone: '' });
+  const [asg, setAsg] = useState([]);
+  const [ap, setAp] = useState({ phone: '', userId: '' });
+  const reload = () => {
+    api('/admin/users').then((r) => r.success && setTeam(r.users));
+    api('/admin/assignments').then((r) => r.success && setAsg(r.assignments));
+  };
+  useEffect(reload, []);
+  const agents = team.filter((t) => t.role === 'agent');
+  const run = async (promise, after) => {
+    const r = await promise;
+    if (!r.success) alert(r.message || 'Failed');
+    else if (after) after();
+    reload();
+  };
+  const pick = (value, onChange) => (
+    <select className="url" value={value} onChange={onChange}>
+      <option value="">Unassigned</option>
+      {agents.filter((t) => t.active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+    </select>
+  );
+  return (
+    <>
+      <div className="top"><button className="ib" onClick={onBack}>←</button><h1>Team</h1></div>
+      <div className="list pad">
+        <h3>Add coworker</h3>
+        <input className="url" placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+        <input className="url" placeholder="WhatsApp number (with country code)" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
+        <button className="btn" onClick={() => run(post('/admin/users', f), () => setF({ name: '', phone: '' }))}>Add coworker</button>
+
+        <h3>Coworkers</h3>
+        {!agents.length && <p className="empty">No coworkers yet.</p>}
+        {agents.map((t) => (
+          <div className="trow" key={t.id}>
+            <div><b>{t.name}{!t.active && ' (disabled)'}</b><small>{t.phone ? '+' + t.phone : ''} · {t.chats} chats</small></div>
+            <button className="sm" onClick={() => run(post('/admin/users/' + t.id, { active: !t.active }, 'PATCH'))}>{t.active ? 'Disable' : 'Enable'}</button>
+            <button className="sm" onClick={() => confirm('Remove ' + t.name + '? Their assigned chats become unassigned.') && run(api('/admin/users/' + t.id, { method: 'DELETE' }))}>Remove</button>
+          </div>
+        ))}
+
+        <h3>Assign a phone number</h3>
+        <input className="url" placeholder="Customer phone (with country code)" value={ap.phone} onChange={(e) => setAp({ ...ap, phone: e.target.value })} />
+        {pick(ap.userId, (e) => setAp({ ...ap, userId: e.target.value }))}
+        <button className="btn" onClick={() => run(post('/admin/assign', { phoneNumber: ap.phone, userId: ap.userId }), () => setAp({ phone: '', userId: '' }))}>Assign</button>
+
+        <h3>Assigned chats</h3>
+        {!asg.length && <p className="empty">Nothing assigned yet.</p>}
+        {asg.map((a) => (
+          <div className="trow" key={a.chatId}>
+            <div><b>{a.name}</b></div>
+            {pick(a.userId, (e) => run(post('/admin/assign', { chatId: a.chatId, userId: e.target.value })))}
+          </div>
+        ))}
+
+        <h3>WhatsApp</h3>
+        <button className="btn alt" onClick={() => confirm('Disconnect WhatsApp and clear stored chats from the server?') && run(post('/whatsapp/logout', {}))}>Disconnect WhatsApp</button>
+      </div>
+    </>
   );
 }
 
 function Body({ m }) {
   if (m.deleted) return <i className="del">🚫 This message was deleted</i>;
-  const u = API + m.mediaUrl;
+  const u = mediaSrc(m.mediaUrl);
   return (
     <>
       {m.quotedId && <div className="q">{m.quotedText}</div>}
@@ -121,7 +242,7 @@ function Body({ m }) {
       {m.type === 'sticker' && <img className="stk" src={u} />}
       {m.type === 'video' && <video className="media" src={u} controls preload="metadata" />}
       {m.type === 'audio' && <div className="aud">{m.ptt && '🎤 '}<audio src={u} controls preload="none" /></div>}
-      {m.type === 'document' && <a className="doc" href={u + '?download=1'}>📄 <span>{m.fileName}</span></a>}
+      {m.type === 'document' && <a className="doc" href={u + '&download=1'}>📄 <span>{m.fileName}</span></a>}
       {m.type === 'location' && <a href={`https://maps.google.com/?q=${m.lat},${m.lng}`} target="_blank">📍 {m.text || 'Location'}</a>}
       {m.type === 'contact' && <span>👤 {m.text}</span>}
       {m.text && m.type !== 'location' && m.type !== 'contact' && <div className="txt">{m.text}</div>}
@@ -129,14 +250,15 @@ function Body({ m }) {
   );
 }
 
-function List({ chats, onOpen, onNew }) {
+function List({ chats, onOpen, onNew, user, onTeam }) {
   const [q, setQ] = useState('');
   const f = chats.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <>
       <div className="top">
         <h1>WhatsApp</h1>
-        <button className="ib" title="Log out" onClick={() => confirm('Disconnect WhatsApp and clear stored chats from the server?') && post('/logout', {})}>⋮</button>
+        {user.role === 'admin' && <button className="ib" title="Team" onClick={onTeam}>👥</button>}
+        <button className="ib" title="Log out" onClick={logout}>⎋</button>
       </div>
       <div className="sb"><input placeholder="Search chats" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="list">
@@ -144,7 +266,7 @@ function List({ chats, onOpen, onNew }) {
           <div className="row" key={c.id} onClick={() => onOpen(c)}>
             <Avatar id={c.id} name={c.name} />
             <div className="mid">
-              <div className="r1"><b>{c.name}</b><span className={c.unreadCount ? 'tm g' : 'tm'}>{c.lastMessage && fmt(c.lastMessage.timestamp)}</span></div>
+              <div className="r1"><b>{c.name}{user.role === 'admin' && <em className="tag">{c.assignedTo ? c.assignedTo.name : 'Unassigned'}</em>}</b><span className={c.unreadCount ? 'tm g' : 'tm'}>{c.lastMessage && fmt(c.lastMessage.timestamp)}</span></div>
               <div className="r2">
                 <span className="pv"><Ticks s={c.lastMessage?.fromMe ? c.lastMessage.status : null} /> {c.lastMessage?.text}</span>
                 {c.unreadCount > 0 && <span className="bd">{c.unreadCount}</span>}
@@ -159,7 +281,7 @@ function List({ chats, onOpen, onNew }) {
   );
 }
 
-function Chat({ chat, list, setMsgs, typing, onBack, onSent }) {
+function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
   const id = chat.id;
   const [text, setText] = useState('');
   const [more, setMore] = useState(false);
@@ -167,6 +289,13 @@ function Chat({ chat, list, setMsgs, typing, onBack, onSent }) {
   const [secs, setSecs] = useState(0);
   const box = useRef(), stick = useRef(true), lastTyping = useRef(0), fileRef = useRef(), mr = useRef(), loading = useRef(false);
   const target = chat.isNew ? { phoneNumber: chat.number } : { chatId: id };
+  const [asg, setAsg] = useState(chat.assignedTo?.id || '');
+  const assign = async (e) => {
+    const v = e.target.value;
+    setAsg(v);
+    const r = await post('/admin/assign', { chatId: id, userId: v ? Number(v) : null });
+    if (!r.success) alert(r.message || 'Could not assign');
+  };
 
   useEffect(() => {
     if (chat.isNew) return;
@@ -253,6 +382,12 @@ function Chat({ chat, list, setMsgs, typing, onBack, onSent }) {
       <div className="top">
         <button className="ib" onClick={onBack}>←</button>
         <div className="hd"><Avatar id={id} name={chat.name} size={40} /><div style={{ minWidth: 0 }}><b>{chat.name}</b><small>{status}</small></div></div>
+        {user.role === 'admin' && !chat.isNew && (
+          <select className="asg" value={asg} onChange={assign}>
+            <option value="">Unassigned</option>
+            {team.filter((t) => t.role === 'agent' && t.active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        )}
       </div>
       <div className="msgs" ref={box} onScroll={onScroll}>
         {list.map((m, i) => {
@@ -263,7 +398,7 @@ function Chat({ chat, list, setMsgs, typing, onBack, onSent }) {
               {nd && <div className="day">{dl(m.timestamp)}</div>}
               <div className={'b' + (m.fromMe ? ' me' : '') + (m.type === 'sticker' ? ' nb' : '')}>
                 {chat.isGroup && !m.fromMe && <div className="sn">{m.pushName || '+' + String(m.sender).split('@')[0]}</div>}
-                <Body m={m} />
+                <Body m={m} />{user.role === 'admin' && m.fromMe && m.sentBy && <div className="by">sent by {m.sentBy}</div>}
                 <span className="meta">{hm(m.timestamp)}{m.fromMe && <Ticks s={m.status} />}</span>
                 {rx && <div><span className="rx">{rx}</span></div>}
               </div>
@@ -292,68 +427,33 @@ function Chat({ chat, list, setMsgs, typing, onBack, onSent }) {
   );
 }
 
-function ConnectionNotice({ status }) {
-  if (status.ready && !status.err) return null;
-
-  const failed = Boolean(status.err);
-
-  return (
-    <div
-      role="status"
-      style={{
-        flexShrink: 0,
-        padding: '10px 14px',
-        background: failed ? '#fde8e8' : '#fff4d6',
-        color: failed ? '#a61b1b' : '#795600',
-        borderBottom: '1px solid #e9edef',
-        fontSize: 13,
-      }}
-    >
-      <strong>{failed ? 'Server connection error' : 'WhatsApp is not connected'}</strong>
-      <div style={{ marginTop: 3 }}>
-        {failed
-          ? 'Unable to reach the API or Socket.IO server. Check the API URL, hosting configuration, and server logs.'
-          : 'The inbox is available, but live chats and sending messages require an active WhatsApp session. Use your separate pairing panel to scan the QR code.'}
-      </div>
-      {failed && (
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          style={{
-            marginTop: 7,
-            padding: '5px 10px',
-            borderRadius: 6,
-            background: '#fff',
-            border: '1px solid currentColor',
-            color: 'inherit',
-          }}
-        >
-          Retry connection
-        </button>
-      )}
-    </div>
-  );
-}
-
 function App() {
   const [st, setSt] = useState({ ready: false, qr: null });
   const [chats, setChats] = useState([]);
   const [msgs, setMsgs] = useState({});
   const [typing, setTyping] = useState({});
   const [active, setActive] = useState(null);
+  const [user, setUser] = useState(null);
+  const [team, setTeam] = useState([]);
+  const [panel, setPanel] = useState(false);
   const activeRef = useRef(null);
   activeRef.current = active;
 
   useEffect(() => {
-    api('/qr-status').then((r) => setSt({ ready: r.ready, qr: r.qr })).catch(() => setSt({ ready: false, qr: null, err: true }));
-    const s = io(API);
-    s.on('connect_error', () => setSt((p) => (p.ready ? p : { ...p, err: true })));
+    api('/auth/me').then((r) => {
+      if (!r.success) return;
+      setUser(r.user);
+      setSt((p) => ({ ...p, ready: r.ready }));
+      if (r.user.role === 'admin') api('/admin/users').then((x) => x.success && setTeam(x.users));
+    }).catch(() => setSt({ ready: false, qr: null, err: true }));
+    const s = io(API, { auth: { token: TOKEN } });
+    s.on('connect_error', (e) => (e.message === 'unauthorized' ? logoutLocal() : setSt((p) => (p.ready ? p : { ...p, err: true }))));
     s.on('connect', () => api('/chats').then((r) => r.success && setChats(r.chats)).catch(() => {}));
     s.on('status', setSt);
     s.on('qr', (qr) => setSt({ ready: false, qr }));
     s.on('ready', (r) => setSt((p) => ({ ...p, ready: r, qr: null })));
     s.on('chat-update', (c) => setChats((p) => [c, ...p.filter((x) => x.id !== c.id)].sort(byTime)));
-    s.on('chat-deleted', (id) => setChats((p) => p.filter((x) => x.id !== id)));
+    s.on('chat-deleted', (id) => { setChats((p) => p.filter((x) => x.id !== id)); setActive((a) => (a && a.id === id ? null : a)); });
     s.on('message', (m) => {
       setMsgs((p) => ({ ...p, [m.chatId]: upsert(p[m.chatId] || [], m) }));
       if (!m.fromMe && activeRef.current?.id === m.chatId) post('/read', { chatId: m.chatId });
@@ -373,22 +473,24 @@ function App() {
     setActive(chats.find((c) => c.id === jid) || { id: 'new:' + d, isNew: true, number: d, name: '+' + d, isGroup: false });
   };
 
+  if (!user && !st.err) return <div className="app"><div className="qr"><p>Loading…</p></div></div>;
+  if (panel) return <div className="app"><Team team={team} setTeam={setTeam} onBack={() => setPanel(false)} /></div>;
+  if (!st.ready) return <div className="app"><Qr qr={st.qr} err={st.err} user={user} onTeam={() => setPanel(true)} /></div>;
   return (
     <div className="app">
-      <ConnectionNotice status={st} />
       {active
-        ? <Chat key={active.id} chat={active} list={msgs[active.id] || []} setMsgs={setMsgs} typing={typing[active.id]} onBack={() => setActive(null)}
+        ? <Chat key={active.id} chat={active} list={msgs[active.id] || []} setMsgs={setMsgs} typing={typing[active.id]} user={user} team={team} onBack={() => setActive(null)}
             onSent={(jid) => setActive(chats.find((c) => c.id === jid) || { id: jid, name: active.name, isGroup: false })} />
-        : <List chats={chats} onOpen={setActive} onNew={newChat} />}
+        : <List chats={chats} onOpen={setActive} onNew={newChat} user={user} onTeam={() => setPanel(true)} />}
     </div>
   );
 }
 
-export default function whatsapp() {
+export default function WhatsAppUI() {
   return (
     <>
       <style>{CSS}</style>
-      <App />
+      {TOKEN ? <App /> : <Login />}
     </>
   );
 }
