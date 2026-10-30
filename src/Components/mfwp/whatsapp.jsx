@@ -77,9 +77,9 @@ button{cursor:pointer}
 select.url{margin-bottom:12px}
 `;
 
-// REST calls go through the Netlify proxy (/api/* -> Hostinger, see public/_redirects).
-// The socket connects directly, because Netlify cannot proxy WebSockets.
-const SERVER = 'https://firebrick-magpie-682590.hostingersite.com';
+// Everything (REST + socket) goes through the same-origin proxy /api/* -> Hostinger
+// (Netlify: public/_redirects, local dev: vite.config.js). The browser never calls Hostinger directly,
+// so there is no CORS. Netlify cannot proxy WebSockets, so the socket uses HTTP long-polling.
 const API = '/api';
 const enc = encodeURIComponent;
 let TOKEN = localStorage.getItem('wa_token') || '';
@@ -442,7 +442,7 @@ function App() {
       setSt((p) => ({ ...p, ready: r.ready }));
       if (r.user.role === 'admin') api('/admin/users').then((x) => x.success && setTeam(x.users));
     }).catch(() => setSt({ ready: false, qr: null, err: true }));
-    const s = io(SERVER, { auth: { token: TOKEN } });
+    const s = io({ path: API + '/socket.io', transports: ['polling'], auth: { token: TOKEN } });
     s.on('connect_error', (e) => (e.message === 'unauthorized' ? logoutLocal() : setSt((p) => (p.ready ? p : { ...p, err: true }))));
     s.on('connect', () => api('/chats').then((r) => r.success && setChats(r.chats)).catch(() => {}));
     s.on('status', setSt);
