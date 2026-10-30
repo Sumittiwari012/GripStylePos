@@ -12,7 +12,7 @@ function Stats() {
   const [d, setD] = useState(null);
   useEffect(() => {
     let on = true;
-    const load = () => api('/admin/stats?days=' + days).then((r) => on && r.success && setD(r)).catch(() => {});
+    const load = () => api('/manage/stats?days=' + days).then((r) => on && r.success && setD(r)).catch(() => {});
     load();
     const t = setInterval(load, 20000);
     return () => { on = false; clearInterval(t); };
@@ -61,7 +61,7 @@ function Stats() {
 
 function Team({ team, setTeam, st }) {
   const [f, setF] = useState({ name: '', phone: '' });
-  const reload = () => api('/admin/users').then((r) => r.success && setTeam(r.users));
+  const reload = () => api('/manage/users').then((r) => r.success && setTeam(r.users));
   useEffect(() => { reload(); }, []);
   const agents = team.filter((t) => t.role === 'agent');
   const run = async (promise, after) => {
@@ -75,15 +75,15 @@ function Team({ team, setTeam, st }) {
       <h3>Add coworker</h3>
       <input className="url" placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
       <input className="url" placeholder="WhatsApp number (with country code)" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
-      <button className="btn" onClick={() => run(post('/admin/users', f), () => setF({ name: '', phone: '' }))}>Add coworker</button>
+      <button className="btn" onClick={() => run(post('/manage/users', f), () => setF({ name: '', phone: '' }))}>Add coworker</button>
 
       <h3>Coworkers</h3>
       {!agents.length && <p className="empty">No coworkers yet.</p>}
       {agents.map((t) => (
         <div className="trow" key={t.id}>
           <div><b>{t.name}{!t.active && ' (disabled)'}</b><small>{t.phone ? '+' + t.phone : ''} · {t.chats ?? 0} chats</small></div>
-          <button className="sm" onClick={() => run(post('/admin/users/' + t.id, { active: !t.active }, 'PATCH'))}>{t.active ? 'Disable' : 'Enable'}</button>
-          <button className="sm" onClick={() => confirm('Remove ' + t.name + '? Their chats go back to the inbox.') && run(api('/admin/users/' + t.id, { method: 'DELETE' }))}>Remove</button>
+          <button className="sm" onClick={() => run(post('/manage/users/' + t.id, { active: !t.active }, 'PATCH'))}>{t.active ? 'Disable' : 'Enable'}</button>
+          <button className="sm" onClick={() => confirm('Remove ' + t.name + '? Their chats go back to the inbox.') && run(api('/manage/users/' + t.id, { method: 'DELETE' }))}>Remove</button>
         </div>
       ))}
 
