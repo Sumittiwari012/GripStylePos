@@ -105,6 +105,9 @@ select.url{margin-bottom:12px}
 .sheet .url{margin:0}
 .info{padding:12px;text-align:center;color:var(--mu);background:var(--panel);font-size:14px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
 .filt{display:flex;gap:6px;padding:0 12px 8px}
+.phone{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:12px}
+.phone span{padding-left:14px;color:var(--mu);font-weight:600}
+.phone input{flex:1;min-width:0;padding:12px 14px 12px 8px}
 .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;padding-bottom:2px}
 .acts .sm{padding:5px 9px;font-size:12.5px}
 .acts select{border:0;background:var(--panel);border-radius:6px;padding:5px 6px;font-size:12.5px;color:var(--tx);max-width:130px}
@@ -187,6 +190,23 @@ export function Top({ title }) {
   return <div className="top"><h1>{title}</h1><button className="ib" title="Log out" onClick={logout}>⎋</button></div>;
 }
 
+// Numbers are typed WITHOUT the country code: +91 is added in front automatically.
+// (A longer number, e.g. one that already starts with a country code, is kept as typed.)
+export const fullPhone = (v) => {
+  const d = String(v || '').replace(/\D/g, '').replace(/^0+/, '');
+  return d.length === 10 ? '91' + d : d;
+};
+export function PhoneInput({ value, onChange, onEnter }) {
+  return (
+    <div className="phone">
+      <span>+91</span>
+      <input inputMode="tel" placeholder="10-digit mobile number" value={value}
+        onChange={(e) => onChange(e.target.value.replace(/[^\d ]/g, ''))}
+        onKeyDown={(e) => e.key === 'Enter' && onEnter && onEnter()} />
+    </div>
+  );
+}
+
 function Login({ page }) {
   const [step, setStep] = useState(0);
   const [phone, setPhone] = useState('');
@@ -200,11 +220,11 @@ function Login({ page }) {
     return r;
   };
   const send = async () => {
-    const r = await call('/auth/request-otp', { phone });
+    const r = await call('/auth/request-otp', { phone: fullPhone(phone) });
     if (r.success) { setStep(1); setMsg(r.message); } else setMsg(r.message || 'Something went wrong');
   };
   const verify = async () => {
-    const r = await call('/auth/verify-otp', { phone, code });
+    const r = await call('/auth/verify-otp', { phone: fullPhone(phone), code });
     if (!r.success) return setMsg(r.message || 'Invalid code');
     if (page === 'admin' && r.user?.role !== 'admin') {
       // Not the admin: throw the session away straight away
@@ -221,7 +241,7 @@ function Login({ page }) {
       <p>{step ? 'Enter the 6-digit code we sent to your WhatsApp.' : 'Enter your WhatsApp number to get a login code on WhatsApp.'}</p>
       {step
         ? <input className="url" inputMode="numeric" maxLength={6} placeholder="123456" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => e.key === 'Enter' && verify()} />
-        : <input className="url" inputMode="tel" placeholder="Number with country code, e.g. 919876543210" value={phone} onChange={(e) => setPhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />}
+        : <PhoneInput value={phone} onChange={setPhone} onEnter={send} />}
       <button className="btn" disabled={busy} onClick={step ? verify : send}>{step ? 'Verify' : 'Send code'}</button>
       {step ? <button className="btn alt" onClick={() => { setStep(0); setCode(''); setMsg(''); }}>Use a different number</button> : null}
       {msg && <p className="er" style={{ color: 'var(--mu)' }}>{msg}</p>}

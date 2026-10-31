@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shell, Top, ChatList, ChatActions } from './common';
+import { Shell, Top, ChatList, ChatActions, fullPhone } from './common';
 
 // Route: /minewp   (same login as /inbox)
 // The chats this person has claimed. Reply here. Each row has quick buttons
@@ -9,9 +9,9 @@ export default function MyChatsPage() {
     <Shell page="mine">
       {({ chats, user, team, openChat }) => {
         const newChat = () => {
-          const d = (prompt('Phone number with country code (for example 919876543210)') || '').replace(/\D/g, '');
+          const d = fullPhone(prompt('Mobile number (91 is added automatically)'));
           if (d.length < 10) return;
-          const jid = (d.length === 10 ? '91' + d : d) + '@s.whatsapp.net';
+          const jid = d + '@s.whatsapp.net';
           openChat(chats.find((c) => c.id === jid) || { id: 'new:' + d, isNew: true, number: d, name: '+' + d, isGroup: false });
         };
         return (

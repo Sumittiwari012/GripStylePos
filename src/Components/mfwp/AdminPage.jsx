@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shell, Top, ChatList, api, post, fmt } from './common';
+import { Shell, Top, ChatList, PhoneInput, fullPhone, api, post, fmt } from './common';
 
 // Route: /adminwp   (admin number only, has its own login)
 // Dashboard (who follows how many, how many converted), All chats (monitor), Team (add coworkers, WhatsApp link).
@@ -60,6 +60,7 @@ function Stats() {
 }
 
 function Team({ team, setTeam, st }) {
+  const [f, setF] = useState({ name: '', phone: '' });
   const reload = () => api('/admin/users').then((r) => r.success && setTeam(r.users));
   useEffect(() => { reload(); }, []);
   const agents = team.filter((t) => t.role === 'agent');
@@ -71,19 +72,29 @@ function Team({ team, setTeam, st }) {
   };
   return (
     <div className="list pad">
+      <h3>Name a coworker</h3>
+      <p className="hint" style={{ color: 'var(--mu)', fontSize: 13, marginBottom: 8 }}>Anyone can log in with their WhatsApp number and shows up by number. Add the same number here to give them a name.</p>
+      <input className="url" placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+      <PhoneInput value={f.phone} onChange={(v) => setF({ ...f, phone: v })} />
+      <button className="btn" onClick={() => run(post('/admin/users', { name: f.name, phone: fullPhone(f.phone) }), () => setF({ name: '', phone: '' }))}>Save name</button>
+
       <h3>Coworkers</h3>
       {!agents.length && <p className="empty">No coworkers yet.</p>}
       {agents.map((t) => (
         <div className="trow" key={t.id}>
           <div><b>{t.name}{!t.active && ' (disabled)'}</b><small>{t.phone ? '+' + t.phone : ''} · {t.chats ?? 0} chats</small></div>
+          <button className="sm" onClick={() => { const n = prompt('Name for +' + t.phone, t.name); if (n && n.trim()) run(post('/admin/users/' + t.id, { name: n.trim() }, 'PATCH')); }}>Rename</button>
           <button className="sm" onClick={() => run(post('/admin/users/' + t.id, { active: !t.active }, 'PATCH'))}>{t.active ? 'Disable' : 'Enable'}</button>
           <button className="sm" onClick={() => confirm('Remove ' + t.name + '? Their chats go back to the inbox.') && run(api('/admin/users/' + t.id, { method: 'DELETE' }))}>Remove</button>
         </div>
       ))}
 
-      <h3>WhatsApp</h3>
-      {st.qr && <div className="qr" style={{ padding: '0 0 16px' }}><p>Scan with WhatsApp → Linked devices</p><img src={st.qr} alt="QR code" /></div>}
-      <button className="btn alt" onClick={() => confirm('Disconnect WhatsApp and clear stored chats from the server?') && run(post('/whatsapp/logout', {}))}>Disconnect WhatsApp</button>
+      {st.qr && (
+        <>
+          <h3>WhatsApp</h3>
+          <div className="qr" style={{ padding: '0 0 16px' }}><p>Scan with WhatsApp → Linked devices</p><img src={st.qr} alt="QR code" /></div>
+        </>
+      )}
     </div>
   );
 }
