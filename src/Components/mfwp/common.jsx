@@ -115,12 +115,42 @@ select.url{margin-bottom:12px}
 
 /* ───────────── session + API helpers ─────────────
    Inbox and My chats share ONE login (wa_token_staff).
-   The admin page has its OWN login (wa_token_admin), so both can be open at the same time, even as different people. */
+   The admin page has its OWN login (wa_token_admin), so both can be open at the same time, even as different people.
+
+   The login stays until the user logs out or clears site data / cookies:
+   the token is kept in localStorage AND in a 10-year cookie (backup in case the browser evicts localStorage). */
 
 let sessionKey = 'wa_token';
 export const setSessionKey = (k) => { sessionKey = k; };
-export const getToken = () => localStorage.getItem(sessionKey) || '';
-export const logoutLocal = () => { localStorage.removeItem(sessionKey); location.reload(); };
+
+const TEN_YEARS = 60 * 60 * 24 * 365 * 10;
+const readCookie = (k) => {
+  const m = document.cookie.match(new RegExp('(?:^|; )' + k + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : '';
+};
+const writeCookie = (k, v) => {
+  document.cookie = `${k}=${encodeURIComponent(v)}; max-age=${v ? TEN_YEARS : 0}; path=/; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
+};
+
+export const getToken = () => {
+  let t = '';
+  try { t = localStorage.getItem(sessionKey) || ''; } catch (e) {}
+  if (!t) {
+    t = readCookie(sessionKey); // backup in case the browser evicted localStorage
+    if (t) { try { localStorage.setItem(sessionKey, t); } catch (e) {} }
+  }
+  return t;
+};
+export const setToken = (t) => {
+  try { localStorage.setItem(sessionKey, t); } catch (e) {}
+  writeCookie(sessionKey, t);
+  navigator.storage?.persist?.().catch(() => {}); // ask the browser not to evict storage
+};
+export const logoutLocal = () => {
+  try { localStorage.removeItem(sessionKey); } catch (e) {}
+  writeCookie(sessionKey, '');
+  location.reload();
+};
 
 export const enc = encodeURIComponent;
 export const api = (p, o = {}) =>
@@ -232,7 +262,7 @@ function Login({ page }) {
       setStep(0); setCode('');
       return setMsg('This page is for the admin only.');
     }
-    localStorage.setItem(sessionKey, r.token);
+    setToken(r.token);
     location.reload();
   };
   return (
