@@ -6,7 +6,7 @@ import { io } from 'socket.io-client';
 export const API = 'https://firebrick-magpie-682590.hostingersite.com';
 
 // The three routes. Change these if you mount the pages under other paths.
-export const ROUTES = { inbox: '/inbox', mine: '/mine', admin: '/admin' };
+export const ROUTES = { inbox: '/inbox', mine: '/minewp', admin: '/adminwp' };
 export const TITLES = { inbox: 'Inbox', mine: 'My chats', admin: 'Admin' };
 
 /* ───────────── styles ───────────── */
