@@ -105,11 +105,14 @@ select.url{margin-bottom:12px}
 .sheet .url{margin:0}
 .info{padding:12px;text-align:center;color:var(--mu);background:var(--panel);font-size:14px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
 .filt{display:flex;gap:6px;padding:0 12px 8px}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;padding-bottom:2px}
+.acts .sm{padding:5px 9px;font-size:12.5px}
+.acts select{border:0;background:var(--panel);border-radius:6px;padding:5px 6px;font-size:12.5px;color:var(--tx);max-width:130px}
 `;
 
 /* ───────────── session + API helpers ─────────────
-   Every page keeps its OWN login (wa_token_inbox / wa_token_mine / wa_token_admin),
-   so the three pages can be open at the same time, even as different people. */
+   Inbox and My chats share ONE login (wa_token_staff).
+   The admin page has its OWN login (wa_token_admin), so both can be open at the same time, even as different people. */
 
 let sessionKey = 'wa_token';
 export const setSessionKey = (k) => { sessionKey = k; };
@@ -125,6 +128,19 @@ export const api = (p, o = {}) =>
 export const post = (p, b, method = 'POST') => api(p, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
 export const mediaSrc = (url) => API + url + (url.includes('?') ? '&' : '?') + 'token=' + getToken();
 export const logout = async () => { await post('/auth/logout', {}).catch(() => {}); logoutLocal(); };
+
+// Close / transfer / release a chat. Asks first, returns true when it worked.
+export const chatAction = async (chatId, path, body, ask) => {
+  if (ask && !confirm(ask)) return false;
+  const r = await post(path, { chatId, ...body });
+  if (!r.success) { alert(r.message || 'Failed'); return false; }
+  return true;
+};
+const ASK = {
+  done: 'Mark as order completed and remove from your list? New messages from this number will still come to you.',
+  cancel: 'Mark as cancelled and remove from your list? New messages from this number will still come to you.',
+  release: 'Send this chat back to the common inbox? New messages from this number will no longer come to you.'
+};
 
 export const hm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 export const fmt = (t) => (new Date(t * 1000).toDateString() === new Date().toDateString() ? hm(t) : new Date(t * 1000).toLocaleDateString([], { day: '2-digit', month: 'short' }));
@@ -213,8 +229,29 @@ function Login({ page }) {
   );
 }
 
+// Quick buttons on each row of "My chats" (same options as the ⋮ menu inside a chat)
+export function ChatActions({ chat, team }) {
+  const agents = team.filter((t) => t.role === 'agent' && t.active && t.id !== chat.assignedTo?.id);
+  return (
+    <div className="acts" onClick={(e) => e.stopPropagation()}>
+      <button className="sm ok" onClick={() => chatAction(chat.id, '/chats/close', { outcome: 'cleared' }, ASK.done)}>✔ Completed</button>
+      <button className="sm no" onClick={() => chatAction(chat.id, '/chats/close', { outcome: 'cancelled' }, ASK.cancel)}>✖ Cancelled</button>
+      <button className="sm" onClick={() => chatAction(chat.id, '/chats/release', {}, ASK.release)}>↩ Inbox</button>
+      <select value="" onChange={(e) => {
+        const sel = e.target;
+        const uid = Number(sel.value);
+        const name = sel.options[sel.selectedIndex].text;
+        if (uid) chatAction(chat.id, '/chats/transfer', { userId: uid }, 'Transfer this chat to ' + name + '?');
+      }}>
+        <option value="">⇄ Transfer…</option>
+        {agents.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+    </div>
+  );
+}
+
 // A searchable list of chats. `tags` shows "New" / "handled by <name>" on each row.
-export function ChatList({ chats, onOpen, tags, empty, onNew, filter }) {
+export function ChatList({ chats, onOpen, tags, empty, onNew, filter, rowExtra }) {
   const [q, setQ] = useState('');
   const f = chats.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
   return (
@@ -234,6 +271,7 @@ export function ChatList({ chats, onOpen, tags, empty, onNew, filter }) {
                 <span className="pv"><Ticks s={c.lastMessage?.fromMe ? c.lastMessage.status : null} /> {c.lastMessage?.text}</span>
                 {c.unreadCount > 0 && <span className="bd">{c.unreadCount}</span>}
               </div>
+              {rowExtra && rowExtra(c)}
             </div>
           </div>
         ))}
@@ -244,20 +282,20 @@ export function ChatList({ chats, onOpen, tags, empty, onNew, filter }) {
   );
 }
 
-// Links to the other pages. They open in their own tab and ask for their own login.
+// Inbox and My chats share one login, so they open in the SAME tab.
+// (The admin page is separate, has its own login and shows no bottom bar.)
 function Nav({ page, user, chats }) {
   const badge = page === 'inbox'
     ? chats.filter((c) => c.unreadCount > 0 && !c.assignedTo).length
-    : page === 'mine' ? chats.filter((c) => c.assignedTo?.id === user.id && c.unreadCount > 0).length : 0;
+    : chats.filter((c) => c.assignedTo?.id === user.id && c.unreadCount > 0).length;
   const items = [['inbox', '📥'], ['mine', '💬']];
-  if (user.role === 'admin') items.push(['admin', '📊']);
   return (
     <nav className="nv">
       {items.map(([k, ic]) => {
         const inner = <><span className="ic">{ic}</span>{TITLES[k]}{k === page && badge > 0 && <span className="bd">{badge}</span>}</>;
         return k === page
           ? <button key={k} className="on">{inner}</button>
-          : <a key={k} href={ROUTES[k]} target="_blank" rel="noopener">{inner}</a>;
+          : <a key={k} href={ROUTES[k]}>{inner}</a>;
       })}
     </nav>
   );
@@ -285,7 +323,7 @@ function Body({ m }) {
 
 // free chat (nobody handling)  -> read it, "Claim this chat" replaces the message box
 // handled by someone else      -> read only (admin can still reply and manage it)
-// handled by me                -> message box + ⋮ menu (order cleared / cancelled / transfer / back to inbox)
+// handled by me                -> message box + ⋮ menu (order completed / cancelled / transfer / back to inbox)
 function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
   const id = chat.id;
   const owner = chat.assignedTo;
@@ -416,7 +454,7 @@ function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
 
       {menu && canManage && (
         <div className="sheet">
-          <button className="sm ok" onClick={() => act('/chats/close', { outcome: 'cleared' }, 'Mark as order cleared and remove from your list? New messages from this number will still come to you.')}>✔ Order cleared</button>
+          <button className="sm ok" onClick={() => act('/chats/close', { outcome: 'cleared' }, 'Mark as order completed and remove from your list? New messages from this number will still come to you.')}>✔ Order completed</button>
           <button className="sm no" onClick={() => act('/chats/close', { outcome: 'cancelled' }, 'Mark as cancelled and remove from your list? New messages from this number will still come to you.')}>✖ Cancelled</button>
           <button className="sm" onClick={() => act('/chats/release', {}, 'Send this chat back to the common inbox? New messages from this number will no longer come to you.')}>↩ Back to inbox</button>
           <select className="url" value="" onChange={(e) => {
@@ -554,13 +592,13 @@ function Session({ page, adminOnly, needsWhatsApp, children }) {
   return (
     <div className="app">
       {body}
-      <Nav page={page} user={user} chats={chats} />
+      {page !== 'admin' && <Nav page={page} user={user} chats={chats} />}
     </div>
   );
 }
 
 export function Shell({ page, adminOnly = false, needsWhatsApp = true, children }) {
-  setSessionKey('wa_token_' + page); // this page's own login
+  setSessionKey(page === 'admin' ? 'wa_token_admin' : 'wa_token_staff'); // Inbox + My chats: one login, Admin: its own
   return (
     <>
       <style>{CSS}</style>

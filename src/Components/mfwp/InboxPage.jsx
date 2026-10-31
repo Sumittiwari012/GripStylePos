@@ -1,7 +1,7 @@
 import React from 'react';
 import { Shell, Top, ChatList } from './common';
 
-// Route: /inbox
+// Route: /inbox   (same login as /minewp)
 // Common to everyone: every unread chat. "New" = nobody has taken it yet,
 // otherwise the row shows who is handling it. Open a chat and press "Claim this chat" to take it.
 export default function InboxPage() {

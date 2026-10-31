@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Shell, Top, ChatList, api, post, fmt } from './common';
 
-// Route: /admin   (admin number only)
+// Route: /adminwp   (admin number only, has its own login)
 // Dashboard (who follows how many, how many converted), All chats (monitor), Team (add coworkers, WhatsApp link).
 
-const LABEL = { active: 'Following', cleared: 'Order cleared', cancelled: 'Cancelled', transferred: 'Transferred', released: 'Back to inbox' };
+const LABEL = { active: 'Following', cleared: 'Order completed', cancelled: 'Cancelled', transferred: 'Transferred', released: 'Back to inbox' };
 const rate = (c, x) => (c + x ? Math.round((100 * c) / (c + x)) + '%' : '–');
 
 function Stats() {
@@ -31,7 +31,7 @@ function Stats() {
       <div className="cards">
         <div className="card"><b>{d.unclaimed}</b><small>Waiting in inbox</small></div>
         <div className="card"><b>{following}</b><small>Being followed now</small></div>
-        <div className="card"><b>{cleared}</b><small>Converted (order cleared)</small></div>
+        <div className="card"><b>{cleared}</b><small>Converted (order completed)</small></div>
         <div className="card"><b>{cancelled}</b><small>Cancelled</small></div>
         <div className="card"><b>{rate(cleared, cancelled)}</b><small>Conversion rate</small></div>
         <div className="card"><b>{moved}</b><small>Handed to someone else</small></div>
