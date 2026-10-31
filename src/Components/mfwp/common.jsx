@@ -23,6 +23,7 @@ button{cursor:pointer}
 .top{background:var(--teal);color:#fff;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));display:flex;align-items:center;gap:10px;min-height:56px}
 .top h1{font-size:21px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ib{color:#fff;font-size:22px;padding:4px 8px}
+a.ib{text-decoration:none}
 .sb{padding:8px 12px;background:#fff}
 .sb input{width:100%;background:var(--panel);border-radius:8px;padding:8px 14px}
 .list{flex:1;overflow-y:auto}
@@ -188,7 +189,15 @@ function Login({ page }) {
   };
   const verify = async () => {
     const r = await call('/auth/verify-otp', { phone, code });
-    if (r.success) { localStorage.setItem(sessionKey, r.token); location.reload(); } else setMsg(r.message || 'Invalid code');
+    if (!r.success) return setMsg(r.message || 'Invalid code');
+    if (page === 'admin' && r.user?.role !== 'admin') {
+      // Not the admin: throw the session away straight away
+      fetch(API + '/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + r.token } }).catch(() => {});
+      setStep(0); setCode('');
+      return setMsg('This page is for the admin only.');
+    }
+    localStorage.setItem(sessionKey, r.token);
+    location.reload();
   };
   return (
     <div className="app"><div className="qr">
@@ -387,6 +396,10 @@ function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
     setRec(false);
   };
 
+  // wa.me opens a chat with this number in the staff member's OWN WhatsApp; the call is then started there
+  const phone = chat.isNew ? chat.number : id.endsWith('@s.whatsapp.net') ? id.split('@')[0].split(':')[0] : null;
+  const waLink = phone ? 'https://wa.me/' + (phone.length === 10 ? '91' + phone : phone) : null;
+
   const live = typing === 'composing' ? 'typing…' : typing === 'recording' ? 'recording audio…' : typing === 'available' ? 'online' : '';
   const status = live || (owner ? (mine ? 'Handled by you' : 'Handled by ' + owner.name) : free ? 'Not claimed yet' : '');
   const agents = team.filter((t) => t.role === 'agent' && t.active && t.id !== owner?.id);
@@ -396,14 +409,16 @@ function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
       <div className="top">
         <button className="ib" onClick={onBack}>←</button>
         <div className="hd"><Avatar id={id} name={chat.name} size={40} /><div style={{ minWidth: 0 }}><b>{chat.name}</b><small>{status}</small></div></div>
+        {waLink && <a className="ib" href={waLink} target="_blank" rel="noopener noreferrer" title="Voice call (opens WhatsApp)">📞</a>}
+        {waLink && <a className="ib" href={waLink} target="_blank" rel="noopener noreferrer" title="Video call (opens WhatsApp)">🎥</a>}
         {canManage && <button className="ib" title="Chat actions" onClick={() => setMenu(!menu)}>⋮</button>}
       </div>
 
       {menu && canManage && (
         <div className="sheet">
-          <button className="sm ok" onClick={() => act('/chats/close', { outcome: 'cleared' }, 'Mark as order cleared and remove from the list?')}>✔ Order cleared</button>
-          <button className="sm no" onClick={() => act('/chats/close', { outcome: 'cancelled' }, 'Mark as cancelled and remove from the list?')}>✖ Cancelled</button>
-          <button className="sm" onClick={() => act('/chats/release', {}, 'Send this chat back to the common inbox?')}>↩ Back to inbox</button>
+          <button className="sm ok" onClick={() => act('/chats/close', { outcome: 'cleared' }, 'Mark as order cleared and remove from your list? New messages from this number will still come to you.')}>✔ Order cleared</button>
+          <button className="sm no" onClick={() => act('/chats/close', { outcome: 'cancelled' }, 'Mark as cancelled and remove from your list? New messages from this number will still come to you.')}>✖ Cancelled</button>
+          <button className="sm" onClick={() => act('/chats/release', {}, 'Send this chat back to the common inbox? New messages from this number will no longer come to you.')}>↩ Back to inbox</button>
           <select className="url" value="" onChange={(e) => {
             const sel = e.target;
             const uid = Number(sel.value);
