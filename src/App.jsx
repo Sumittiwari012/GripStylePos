@@ -7,6 +7,7 @@ import { Routes, Route } from "react-router-dom";
 import Accounts from "./Components/accounts";
 import Offers from "./Components/Offers/Offers";
 import CouponVoucher from './Components/Offers/CouponVoucher';
+import ProductDiscounts from './Components/Offers/ProductDiscount/ProductDiscounts';
 import CategorySalesDashboard from './Components/CategorySalesDashBoard/CategorySalesDashBoard';
 import WhatsAppCampaignManager from './Components/WhatsAppCampaignManager';
 import InboxPage from './Components/mfwp/InboxPage';
@@ -21,6 +22,7 @@ function App() {
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/offers" element={<Offers />} />
             <Route path="/offers/coupon" element={<CouponVoucher/>}/>
+            <Route path="/offers/product" element={<ProductDiscounts/>}/>
             <Route path="/Sales" element={<CategorySalesDashboard />} />
             <Route path="/whatsappcampaign" element={<WhatsAppCampaignManager />} />
             <Route path="/inbox" element={<InboxPage />} />

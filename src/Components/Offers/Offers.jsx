@@ -1,47 +1,31 @@
 import React, { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Ticket, Users, Tag, Layers } from 'lucide-react'
+import { Ticket, Tag } from 'lucide-react'
 
 // Signature: each card reads as a torn ticket stub — a dashed perforation
 // splits the icon plate from the label, with punched notches on both edges.
 const OFFERS = [
   {
     key: 'coupon',
-    label: 'Coupon Voucher',
+    label: 'Coupon Discount',
     sub: 'Redeem a code',
     icon: Ticket,
     base: '#B9762E',
     deep: '#8F5720',
   },
   {
-    key: 'employee',
-    label: 'Employee Discount',
-    sub: 'Verified staff pricing',
-    icon: Users,
-    base: '#2F7E72',
-    deep: '#215C54',
-  },
-  {
     key: 'product',
     label: 'Product Discount',
-    sub: 'Marked-down items',
+    sub: 'Flat, %, Buy X Get Y, Bundle',
     icon: Tag,
     base: '#C0503C',
     deep: '#8F392B',
-  },
-  {
-    key: 'combo',
-    label: 'Combo Offer',
-    sub: 'Bundle & save',
-    icon: Layers,
-    base: '#5B4A8A',
-    deep: '#413267',
   },
 ]
 
 const ROUTES = {
   coupon: '/offers/coupon',
-  // employee, product, combo can point to their own routes once those pages exist
+  product: '/offers/product',
 }
 
 function Offers() {
@@ -118,8 +102,6 @@ function Offers() {
               onClick={() => handleSelect(key)}
               className="offer-card"
               style={{
-                '--base': base,
-                '--deep': deep,
                 background: `linear-gradient(155deg, ${base} 0%, ${deep} 100%)`,
               }}
             >
