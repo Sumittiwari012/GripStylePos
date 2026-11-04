@@ -9,7 +9,7 @@ import Report from './report';
 import LoginPage from './LoginPage';
 import PettyCashCheck from './PettyCashCheck';
 import Admin from './Admin';
-const API_BASE_URL = 'https://dummypossetup.runasp.net';
+const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 
 // Simple emoji placeholders for nav icons — swap these for real SVGs
 // or an icon font/library whenever you have one wired up.
