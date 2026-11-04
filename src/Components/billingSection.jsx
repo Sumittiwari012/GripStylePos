@@ -1,23 +1,20 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import './billingSection.css';
 import AddCustomer from './addCustomer';
 import Quotation from './quotation';
 import Payment from './payment';
 import InvoiceBill from './invoiceBill';
+import { safeBuildBillLines, safeEvaluate, applyCoupon, offersForProduct } from './offerEngine';
 
+// Normal POS calls (invoice number, coupons, addTransaction) -> dummy POS API
 const API_BASE_URL = 'https://gripstyleapi.runasp.net';
+// Offer controller (api/MOffer) -> official GripStyle API
+const OFFER_API_BASE_URL = 'https://gripstyleapi.runasp.net';
 const WA_SERVICE_URL = 'http://localhost:4001'; // change to your Baileys service URL once deployed
 const WA_API_KEY = 'your-long-random-secret';
 
-// Builds a plain-text invoice summary to send over WhatsApp instead of a URL.
 const buildInvoiceMessageText = ({
-  invoiceNumber,
-  customerName,
-  items = [],
-  totalAmount = 0,
-  discount = 0,
-  taxAmount = 0,
-  payableAmount = 0
+  invoiceNumber, customerName, items = [], totalAmount = 0, discount = 0, taxAmount = 0, payableAmount = 0
 }) => {
   const itemLines = items
     .map((item) => `- ${item.name} x${item.quantity} - Rs.${(item.price * item.quantity).toFixed(2)}`)
@@ -35,9 +32,7 @@ const buildInvoiceMessageText = ({
     `Payable: Rs.${payableAmount.toFixed(2)}`,
     '',
     'Thank you for your business!'
-  ]
-    .filter(Boolean)
-    .join('\n');
+  ].filter(Boolean).join('\n');
 };
 
 const sendInvoiceViaWhatsApp = async ({ phoneNumber, invoiceNumber, customerName, message }) => {
@@ -48,58 +43,46 @@ const sendInvoiceViaWhatsApp = async ({ phoneNumber, invoiceNumber, customerName
   try {
     const res = await fetch(`${WA_SERVICE_URL}/send-text`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': WA_API_KEY
-      },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': WA_API_KEY },
       body: JSON.stringify({ phoneNumber, invoiceNumber, customerName, message })
     });
     const data = await res.json();
-    if (!data.success) {
-      console.error('WhatsApp send failed:', data.message);
-    } else {
-      console.log('✅ Invoice sent via WhatsApp');
-    }
+    if (!data.success) console.error('WhatsApp send failed:', data.message);
+    else console.log('✅ Invoice sent via WhatsApp');
   } catch (err) {
     console.error('WhatsApp send error (non-blocking):', err);
   }
 };
 
-// ── Invoice numbering ──────────────────────────────────────────────────
-// Format: GSC{counterId}-{ddMMyyyy}/{serial padded to 4 digits}
-// e.g. GSC1-29072026/0078
-//
-// The serial's source of truth is now the backend's CounterInvoice table
-// (per-counter), not localStorage. This is a read-only "peek" — it fetches
-// the counter's last-used serial and shows what the NEXT one would be,
-// without spending anything. The backend (addTransaction) is responsible
-// for actually advancing CounterInvoice once a sale is confirmed saved, so
-// there's no separate "commit" step needed here anymore.
+// Format: GSC{counterId}-{ddMMyyyy}/{serial padded to 4 digits}. Read-only peek.
 const peekInvoiceNumber = async () => {
   const counterId = localStorage.getItem('counterId') || '0';
-
   let lastSerial = 0;
   try {
     const res = await fetch(`${API_BASE_URL}/GetCounterInvoiceNumber?counterId=${counterId}`);
-    if (res.ok) {
-      // Endpoint returns the raw numeric LastInvoiceNumber (e.g. 78).
-      lastSerial = await res.json();
-    }
-    // 404 (no row yet for this counter) → lastSerial stays 0, first invoice starts at 0001.
+    if (res.ok) lastSerial = await res.json();
   } catch (err) {
     console.error('Failed to fetch last invoice number:', err);
   }
-
-  const nextSerial = (Number(lastSerial) || 0);
-
+  const nextSerial = Number(lastSerial) || 0;
   const today = new Date();
   const dd = String(today.getDate()).padStart(2, '0');
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const yyyy = today.getFullYear();
-  const dateStr = `${dd}${mm}${yyyy}`;
-  const serialStr = String(nextSerial).padStart(4, '0');
+  return `GSC${counterId}-${dd}${mm}${yyyy}/${String(nextSerial).padStart(4, '0')}`;
+};
 
-  return `GSC${counterId}-${dateStr}/${serialStr}`;
+// Returns the product's available stock, or null if the products API doesn't expose it
+// (unknown stock is never treated as zero, so billing isn't blocked by missing data).
+const getStock = (product) => {
+  const raw = product.quantity ?? product.Quantity ?? product.stock ?? product.Stock ?? product.availableQuantity;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isNaN(n) ? null : n;
+};
+const isOutOfStock = (product) => {
+  const stock = getStock(product);
+  return stock !== null && stock <= 0;
 };
 
 function BillingSection({ products = [], cart = [], setCart }) {
@@ -113,57 +96,126 @@ function BillingSection({ products = [], cart = [], setCart }) {
   const [discountByInvoice, setDiscountByInvoice] = useState({});
   const [paymentsByInvoice, setPaymentsByInvoice] = useState({});
 
-  // ── Coupon code (scoped to the current invoice, mirrors discount/payments) ──
-  // appliedCoupon shape: { code, raw, couponAssignmentId, customerId,
-  // requiresOtp, verified, verifiedAt }. `verified` starts out as whatever
-  // CouponCodeVerification returned — true immediately for an open coupon
-  // (no OTP needed), false for a customer-locked one until the OTP step
-  // below flips it to true. RedeemCoupon is only ever called once this is true.
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
-  // ── OTP step for customer-locked coupons ──
   const [otpValue, setOtpValue] = useState('');
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [otpError, setOtpError] = useState('');
 
-  const [completedInvoice, setCompletedInvoice] = useState(null); // holds data for the receipt modal
+  const [completedInvoice, setCompletedInvoice] = useState(null);
   const [isSubmittingTransaction, setIsSubmittingTransaction] = useState(false);
   const [transactionError, setTransactionError] = useState('');
-  // Sale already went through, but something after it (e.g. redeeming the
-  // coupon) failed — surfaced separately so it never blocks/hides the receipt.
   const [postSaleWarning, setPostSaleWarning] = useState('');
+
+  // ── Offers (never block billing) ──
+  const [offers, setOffers] = useState([]);
+  const [dismissedReminders, setDismissedReminders] = useState(new Set());
+  const [toast, setToast] = useState('');
+  const seenReminderIds = useRef(new Set());
+  const toastTimer = useRef(null);
 
   const searchInputRef = useRef(null);
 
   const focusSearchInput = () => {
-    // small delay lets any closing modal/DOM update finish first
-    setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 50);
+    setTimeout(() => searchInputRef.current?.focus(), 50);
   };
 
-  // Keep the search box focused on initial load
   useEffect(() => {
     focusSearchInput();
   }, []);
 
-  // ── Re-focus the search box whenever a new line item lands in the cart ──
-  // Covers additions made from this component's own search dropdown (which
-  // already calls focusSearchInput directly) AND additions made from the
-  // product grid in the parent component, which has no direct handle on
-  // this component's input. Only fires when the cart actually grows (a
-  // brand-new line, not a quantity +/- on an existing one), so it doesn't
-  // yank focus away while someone's adjusting quantities elsewhere.
+  // Load live offers once. If this fails, billing just carries on without offers.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${OFFER_API_BASE_URL}/api/MOffer?onlyLive=true`);
+        if (res.ok) setOffers(await res.json());
+      } catch (e) {
+        console.error('Failed to load offers (billing continues without them)', e);
+      }
+    })();
+  }, []);
+
+  // Barcode -> subCategoryId lookup from the official API. Offers are tied to
+  // sub-categories, and the POS products API may not return them, so this
+  // fills the gap for items added from ANY place (grid or search box).
+  const [subCatByBarcode, setSubCatByBarcode] = useState({});
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${OFFER_API_BASE_URL}/api/MOffer/product-subcategories`);
+        if (!res.ok) return;
+        const rows = await res.json();
+        const map = {};
+        rows.forEach((r) => {
+          const bc = r.barcode ?? r.Barcode;
+          const sc = r.subCategoryId ?? r.SubCategoryId;
+          if (bc != null && sc != null) map[String(bc).trim()] = sc;
+        });
+        setSubCatByBarcode(map);
+      } catch (e) {
+        console.error('Failed to load barcode->subcategory map (offers may not match)', e);
+      }
+    })();
+  }, []);
+
+  const resolveSubCat = (p) =>
+    p.subCategoryId ?? p.SubCategoryId ?? subCatByBarcode[String(p.barcode ?? '').trim()] ?? null;
+
+  // Cart with subCategoryId guaranteed where it can be resolved
+  // Resolution order for a cart item: its own field -> the product list entry
+  // (same id) -> the barcode map. This is what makes items added from the
+  // product grid behave exactly like items added from the search box.
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const enrichedCart = useMemo(
+    () =>
+      cart.map((i) => {
+        if (i.subCategoryId != null) return i;
+        const src = productById.get(i.id);
+        return { ...i, subCategoryId: (src ? resolveSubCat(src) : null) ?? resolveSubCat(i) };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cart, productById, subCatByBarcode]
+  );
+
   const prevCartLengthRef = useRef(cart.length);
   useEffect(() => {
-    if (cart.length > prevCartLengthRef.current) {
-      focusSearchInput();
-    }
+    if (cart.length > prevCartLengthRef.current) focusSearchInput();
     prevCartLengthRef.current = cart.length;
   }, [cart]);
+
+  // ── Derived bill lines: offers first, then coupon (honouring immuneToCoupon) ──
+  const engineLines = useMemo(() => safeBuildBillLines(enrichedCart, offers), [enrichedCart, offers]);
+  const { lines: billLines, overriddenOfferIds } = useMemo(
+    () => applyCoupon(engineLines, appliedCoupon),
+    [engineLines, appliedCoupon]
+  );
+  const { applications, reminders } = useMemo(() => safeEvaluate(enrichedCart, offers), [enrichedCart, offers]);
+
+  // A coupon overrides non-immune offers, so reminding about them is just noise
+  const visibleReminders = reminders.filter(
+    (r) => !dismissedReminders.has(r.id) && !(appliedCoupon && !r.offer.immuneToCoupon)
+  );
+
+  // Pop a toast once per brand-new reminder
+  useEffect(() => {
+    const fresh = reminders.filter((r) => !seenReminderIds.current.has(r.id));
+    fresh.forEach((r) => seenReminderIds.current.add(r.id));
+    if (fresh.length) {
+      setToast(fresh[0].message);
+      clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(''), 6000);
+    }
+  }, [reminders]);
+
+  const resetOfferUi = () => {
+    seenReminderIds.current = new Set();
+    setDismissedReminders(new Set());
+    setToast('');
+  };
 
   const discount = discountByInvoice[invoiceNumber] ?? 0;
 
@@ -171,33 +223,45 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setDiscountByInvoice((prev) => ({ ...prev, [invoiceNumber]: value }));
   };
 
+  // ── Amounts (all read billLines, which already carry offer + coupon prices) ──
+  const totalAmount = billLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
+  // Pre-coupon total, used for coupon eligibility checks
+  const preCouponTotal = engineLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
+
+  const taxableAmount = billLines.reduce((sum, l) => {
+    const cgst = Number(l.cgst) || 0;
+    return sum + (l.price * l.quantity) / (100 + 2 * cgst) * 100;
+  }, 0);
+  const taxAmount = billLines.reduce((sum, l) => {
+    const cgst = Number(l.cgst) || 0;
+    const taxable = (l.price * l.quantity) / (100 + 2 * cgst) * 100;
+    return sum + taxable * (cgst / 100) * 2;
+  }, 0);
+
+  const totalCouponDiscount = billLines.reduce((s, l) => s + (l.couponOff || 0) * l.quantity, 0);
+
+  const safeDiscount = Math.min(Math.max(Number(discount) || 0, 0), totalAmount);
+  const payableAmount = totalAmount - safeDiscount;
+
+  const currentPayments = paymentsByInvoice[invoiceNumber] ?? [];
+  const amountPaid = currentPayments.reduce((sum, p) => sum + p.amount, 0);
+
   // ── Coupon apply/remove ──
-  // Calls the real CouponCodeVerification endpoint (GET) and stores its
-  // response. No redemption happens here, and no OTP step is wired up yet
-  // even if the response comes back with RequiresOtp: true. The actual
-  // per-item repricing happens in the effect below, keyed off this state.
   const handleApplyCoupon = async () => {
     const code = couponCode.trim();
-    if (!code) {
-      setCouponError('Enter a coupon code.');
-      return;
-    }
+    if (!code) { setCouponError('Enter a coupon code.'); return; }
     const phoneNumber = selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber;
-    if (!phoneNumber) {
-      setCouponError('Add a customer before applying a coupon.');
-      return;
-    }
+    if (!phoneNumber) { setCouponError('Add a customer before applying a coupon.'); return; }
 
     setIsApplyingCoupon(true);
     setCouponError('');
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/CouponRedemption/CouponCodeVerification?couponCode=${encodeURIComponent(code)}&phoneNumber=${encodeURIComponent(phoneNumber)}&purchaseAmount=${Math.round(totalAmount)}`
+        `${API_BASE_URL}/api/CouponRedemption/CouponCodeVerification?couponCode=${encodeURIComponent(code)}&phoneNumber=${encodeURIComponent(phoneNumber)}&purchaseAmount=${Math.round(preCouponTotal)}`
       );
       const result = await res.json();
 
       if (!res.ok) {
-        // Backend returns BadRequest(string) with the message as plain text/JSON.
         throw new Error((typeof result === 'string' ? result : result?.message) || 'Invalid or expired coupon code.');
       }
 
@@ -206,24 +270,14 @@ function BillingSection({ products = [], cart = [], setCart }) {
         raw: result,
         couponAssignmentId: result.couponAssignmentId ?? result.CouponAssignmentId,
         customerId: result.customerId ?? result.CustomerId,
-        // For an open coupon (no OTP needed) the backend already returns
-        // Verified: true here — nothing further to do before redeeming.
-        // For a customer-locked coupon it comes back false, and only the
-        // OTP verification below (handleVerifyOtp) can flip it to true.
         requiresOtp: result.requiresOtp ?? result.RequiresOtp ?? false,
         verified: result.verified ?? result.Verified ?? false,
         verifiedAt: new Date().toISOString()
       };
 
       setAppliedCoupon(verifiedCoupon);
-
-      // Persist the verification response (per invoice) so it survives a
-      // refresh; this is storage only for now, no redemption call yet.
       try {
-        localStorage.setItem(
-          `verifiedCoupon_${invoiceNumber ?? 'pending'}`,
-          JSON.stringify(verifiedCoupon)
-        );
+        localStorage.setItem(`verifiedCoupon_${invoiceNumber ?? 'pending'}`, JSON.stringify(verifiedCoupon));
       } catch (storageErr) {
         console.error('Failed to persist verified coupon to localStorage:', storageErr);
       }
@@ -248,17 +302,10 @@ function BillingSection({ products = [], cart = [], setCart }) {
     }
   };
 
-  // ── OTP verification for customer-locked coupons ──
-  // Checks the OTP that CouponCodeVerification sent over WhatsApp. On
-  // success, flips appliedCoupon.verified to true — that's the flag
-  // handlePaymentComplete checks before calling RedeemCoupon.
   const handleVerifyOtp = async () => {
     if (!appliedCoupon) return;
     const otpVal = Number(otpValue);
-    if (!otpVal) {
-      setOtpError('Enter the OTP sent to the customer.');
-      return;
-    }
+    if (!otpVal) { setOtpError('Enter the OTP sent to the customer.'); return; }
 
     setIsVerifyingOtp(true);
     setOtpError('');
@@ -273,7 +320,6 @@ function BillingSection({ products = [], cart = [], setCart }) {
         })
       });
       const result = await res.json();
-
       if (!res.ok) {
         throw new Error((typeof result === 'string' ? result : result?.message) || 'Invalid or expired OTP.');
       }
@@ -293,13 +339,6 @@ function BillingSection({ products = [], cart = [], setCart }) {
     }
   };
 
-  // ── Actually commit the redemption ──
-  // Called from handlePaymentComplete, only once the sale itself has
-  // succeeded and appliedCoupon.verified is true (either because the
-  // coupon never needed OTP, or because handleVerifyOtp already flipped
-  // it). Non-blocking by design: the sale has already gone through by the
-  // time this runs, so a failure here shouldn't undo it — it's surfaced
-  // via postSaleWarning instead.
   const redeemAppliedCoupon = async () => {
     if (!appliedCoupon?.couponAssignmentId || !appliedCoupon?.customerId) {
       return { success: false, message: 'Missing coupon assignment/customer id.' };
@@ -315,94 +354,35 @@ function BillingSection({ products = [], cart = [], setCart }) {
         })
       });
       const result = await res.json();
-      if (!res.ok) {
-        return { success: false, message: result?.message || 'Coupon redemption failed.' };
-      }
+      if (!res.ok) return { success: false, message: result?.message || 'Coupon redemption failed.' };
       return { success: true, result };
     } catch (err) {
       return { success: false, message: err.message || 'Coupon redemption error.' };
     }
   };
 
-  // ── Bake the coupon discount into each cart item's own price ──────────
-  // Every item carries `originalPrice`, its sale price before any coupon
-  // (set once, when it's added to the cart, and never touched again). This
-  // effect recomputes `item.price` from that fixed baseline every time the
-  // cart or the applied coupon changes, so it's safe to re-run repeatedly
-  // without compounding discounts:
-  //   - Percentage coupon: per-item discount = item.mrp × pct (off ITS OWN
-  //     MRP, per unit).
-  //   - Flat-amount coupon: the flat amount is split across items in
-  //     proportion to each item's share of the cart's total MRP.
-  //   - While a coupon is applied, item.price is priced off `mrp` directly
-  //     (mrp − that item's coupon discount per unit) — the coupon
-  //     supersedes any pre-existing product discount rather than stacking
-  //     on top of it. With no coupon applied, item.price falls back to
-  //     originalPrice — the item's normal discounted sale price.
-  // Because `price` (not just a separately-tracked discount number) is what
-  // gets stored on the item, every downstream consumer — the cart rows
-  // below, the /addTransaction payload, and the receipt handed to
-  // InvoiceBill — reads the correct already-discounted value with no extra
-  // calculation of its own.
-  useEffect(() => {
-    if (cart.length === 0) return;
-
-    const couponPercentage = Number(appliedCoupon?.raw?.discountPercentage ?? appliedCoupon?.raw?.DiscountPercentage) || 0;
-    const couponFlatAmount = Number(appliedCoupon?.raw?.discountAmount ?? appliedCoupon?.raw?.DiscountAmount) || 0;
-
-    const totalCartMrp = cart.reduce((sum, item) => {
-      const mrp = Number(item.mrp) || item.originalPrice || item.price;
-      return sum + mrp * item.quantity;
-    }, 0);
-
-    const rawCouponDiscounts = cart.map((item) => {
-      if (!appliedCoupon) return 0;
-      const mrp = Number(item.mrp) || item.originalPrice || item.price;
-      if (couponPercentage > 0) {
-        return mrp * (couponPercentage / 100) * item.quantity;
-      }
-      if (couponFlatAmount > 0 && totalCartMrp > 0) {
-        const mrpShare = (mrp * item.quantity) / totalCartMrp;
-        return couponFlatAmount * mrpShare;
-      }
-      return 0;
-    });
-
-    let changed = false;
-    const nextCart = cart.map((item, idx) => {
-      const originalPrice = item.originalPrice ?? item.price;
-      const mrp = Number(item.mrp) || originalPrice;
-      const couponDiscountPerUnit = item.quantity > 0 ? rawCouponDiscounts[idx] / item.quantity : 0;
-
-      // While a coupon is applied, price off MRP directly — the coupon
-      // supersedes any existing product discount rather than stacking on it.
-      // With no coupon applied, rawCouponDiscounts is all zeros, so this
-      // collapses back to originalPrice — the previous discounted state.
-      const basePrice = appliedCoupon ? mrp : originalPrice;
-      const newPrice = Math.max(basePrice - couponDiscountPerUnit, 0);
-
-      if (item.originalPrice === originalPrice && Math.abs(newPrice - item.price) < 0.005) {
-        return item;
-      }
-      changed = true;
-      return { ...item, originalPrice, price: newPrice };
-    });
-
-    if (changed) setCart(nextCart);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, appliedCoupon]);
+  // NOTE: the old "bake coupon into cart prices" effect is gone. Cart items now
+  // keep price = originalPrice; offers and coupons are applied on billLines.
 
   const handleAddFromSearch = (product) => {
     if (!invoiceNumber) {
       alert('Please add a customer before adding items.');
       return;
     }
+    if (isOutOfStock(product)) {
+      setToast(`"${product.productName}" is out of stock and was not added.`);
+      clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(''), 4000);
+      setItemSearchTerm('');
+      focusSearchInput();
+      return;
+    }
     const salePrice = Number(product.retailSalePrice) || 0;
     const mrp = Number(product.mrp) || 0;
     const cgst = Number(product.cgst) || 0;
     const sgst = Number(product.sgst) || 0;
-    // Normalize HSN field: product master may send it as HSNCode or hsnCode.
     const hsn = product.HSNCode ?? product.hsnCode ?? '-';
+    const subCategoryId = product.subCategoryId ?? product.SubCategoryId ?? null;
 
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.id === product.id);
@@ -417,12 +397,11 @@ function BillingSection({ products = [], cart = [], setCart }) {
           id: product.id,
           name: product.productName,
           price: salePrice,
-          originalPrice: salePrice, // fixed baseline the coupon effect discounts from
-          mrp,
-          cgst,
-          sgst,
+          originalPrice: salePrice,
+          mrp, cgst, sgst,
           barcode: product.barcode,
           hsn,
+          subCategoryId, // needed for offer matching
           quantity: 1
         }
       ];
@@ -432,14 +411,14 @@ function BillingSection({ products = [], cart = [], setCart }) {
   };
 
   const increaseCount = (id) => {
-    setCart(cart.map(item => item.id === id ? { ...item, quantity: item.quantity + 1 } : item));
+    setCart(cart.map((item) => (item.id === id ? { ...item, quantity: item.quantity + 1 } : item)));
   };
 
   const decreaseCount = (id) => {
     setCart((prevCart) => {
       const item = prevCart.find((i) => i.id === id);
       if (item && item.quantity <= 1) return prevCart.filter((i) => i.id !== id);
-      return prevCart.map((i) => i.id === id ? { ...i, quantity: i.quantity - 1 } : i);
+      return prevCart.map((i) => (i.id === id ? { ...i, quantity: i.quantity - 1 } : i));
     });
   };
 
@@ -453,18 +432,12 @@ function BillingSection({ products = [], cart = [], setCart }) {
       payments: paymentsByInvoice[invoiceNumber] ?? [],
       savedAt: new Date().toISOString()
     };
-
     const existing = JSON.parse(localStorage.getItem('savedQuotations') || '[]');
-    const updated = [
-      ...existing.filter((q) => q.invoiceNumber !== invoiceNumber),
-      quotation
-    ];
+    const updated = [...existing.filter((q) => q.invoiceNumber !== invoiceNumber), quotation];
     localStorage.setItem('savedQuotations', JSON.stringify(updated));
     alert(`Quotation ${invoiceNumber} saved.`);
   };
 
-  // Re-peek a fresh number rather than trusting the one stored on the
-  // quotation — other sales may have completed since it was saved.
   const handleLoadQuotation = async (quotation) => {
     const freshInvoiceNumber = await peekInvoiceNumber();
     setInvoiceNumber(freshInvoiceNumber);
@@ -481,12 +454,11 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setCouponError('');
     setOtpValue('');
     setOtpError('');
+    resetOfferUi();
     setIsQuotationListOpen(false);
     focusSearchInput();
   };
 
-  // Display-only — peeks the next number from the backend, doesn't spend it.
-  // If the sale is never completed, the counter is never touched.
   const handleCustomerAdded = async (customer) => {
     setSelectedCustomer(customer);
     const nextInvoiceNumber = await peekInvoiceNumber();
@@ -497,6 +469,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setCouponError('');
     setOtpValue('');
     setOtpError('');
+    resetOfferUi();
     try {
       localStorage.removeItem('verifiedCoupon_pending');
     } catch (storageErr) {
@@ -507,66 +480,23 @@ function BillingSection({ products = [], cart = [], setCart }) {
 
   const searchResults = itemSearchTerm.trim() === ''
     ? []
-    : products.filter(p => {
+    : products.filter((p) => {
         const term = itemSearchTerm.toLowerCase();
         return (p.productName ?? '').toLowerCase().includes(term) || (p.barcode ?? '').toLowerCase().includes(term);
       });
 
   const handleSearchKeyDown = (e) => {
-    if (e.key === 'Enter' && searchResults.length > 0) handleAddFromSearch(searchResults[0]);
+    if (e.key === 'Enter' && searchResults.length > 0) {
+      handleAddFromSearch(searchResults.find((p) => !isOutOfStock(p)) ?? searchResults[0]);
+    }
   };
-
-  // ── Amounts ──
-  // item.price already has any coupon discount baked in (see the repricing
-  // effect above), so totalAmount here is the post-coupon total — no
-  // separate "subtract the coupon" step needed anywhere below.
-  const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const taxableAmount = cart.reduce((sum, item) => {
-    const itemTotal = item.price * item.quantity;
-    return sum + (itemTotal / (100 + 2 * item.cgst) * 100);
-  }, 0);
-  const taxAmount = cart.reduce((sum, item) => {
-    const itemTotal = item.price * item.quantity;
-    const itemTaxable = itemTotal / (100 + 2 * item.cgst) * 100;
-    return sum + (itemTaxable * (item.cgst / 100) * 2);
-  }, 0);
-
-  // ── Total coupon discount, for the "Coupon Discount" summary row and the
-  // applied-coupon badge ──
-  // FIXED: now computed against `mrp`, not `originalPrice`. Since the
-  // repricing effect above now prices items off `mrp` directly whenever a
-  // coupon is applied (mrp − couponDiscountPerUnit), the coupon's true
-  // discount per item is `mrp − item.price` — not `originalPrice − item.price`.
-  // The old originalPrice-based version silently subtracted back out each
-  // item's pre-existing product discount (mrp − originalPrice), which is why
-  // it under-reported the coupon's real value whenever items already had
-  // their own discount baked in. Gated on `appliedCoupon` so it's exactly 0
-  // with no coupon applied (matching the old behavior), and — because the
-  // per-item proration in the repricing effect is designed to always sum
-  // back to the full flat/percentage amount — this now reliably totals to
-  // the coupon's actual value.
-  const totalCouponDiscount = appliedCoupon
-    ? cart.reduce((sum, item) => {
-        const mrp = Number(item.mrp) || item.originalPrice || item.price;
-        return sum + Math.max(mrp - item.price, 0) * item.quantity;
-      }, 0)
-    : 0;
-
-  const safeDiscount = Math.min(Math.max(Number(discount) || 0, 0), totalAmount);
-  const payableAmount = totalAmount - safeDiscount;
-
-  const currentPayments = paymentsByInvoice[invoiceNumber] ?? [];
-  const amountPaid = currentPayments.reduce((sum, p) => sum + p.amount, 0);
 
   const handleUpdatePayments = (newPayments) => {
     setPaymentsByInvoice((prev) => ({ ...prev, [invoiceNumber]: newPayments }));
   };
 
-  // ── Finalize sale: call API, then show receipt, then reset everything ──
+  // ── Finalize sale ──
   const handlePaymentComplete = async () => {
-
-    // A customer-locked coupon must clear OTP before the sale is finalized —
-    // otherwise RedeemCoupon would just reject it later with nothing written.
     if (appliedCoupon?.requiresOtp && !appliedCoupon?.verified) {
       setTransactionError('Verify the coupon OTP before completing the sale.');
       return;
@@ -576,94 +506,80 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setTransactionError('');
     setPostSaleWarning('');
 
-    // ── Pull the logged-in counter's ID from localStorage (set at login) ──
     const counterId = localStorage.getItem('counterId');
-
     if (!counterId) {
       setTransactionError('Counter ID missing — please log in again before completing the sale.');
       setIsSubmittingTransaction(false);
       return;
     }
 
-    // Peek a fresh number right before submitting, so we use the true next
-    // number even if some time has passed since the customer/cart was set up.
     const finalInvoiceNumber = await peekInvoiceNumber();
 
     const payload = {
-  phoneNumber: selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber,
-  invoiceNumber: finalInvoiceNumber,
-  totalAmount,
-  // Always sent as 0 to the customer purchase master — discount is no
-  // longer reported to the backend, regardless of what was actually
-  // applied (manual discount + coupon). payableAmount still reflects the
-  // real discounted amount the customer paid.
-  discount: 0,
-  couponCode: appliedCoupon?.code ?? null,
-  payableAmount,
-  counterId: Number(counterId),
-  items: cart.map((item) => {
-    const mrp = Number(item.mrp) || item.price;
-    const itemDiscount = Math.max(mrp - item.price, 0) * item.quantity;
-    return {
-      productId: item.id,
-      quantity: item.quantity,
-      salePrice: item.price,
-      mrp,
-      discount: itemDiscount,
-      afterTaxation: item.price * item.quantity,
-      hsnCode: item.hsn
+      phoneNumber: selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber,
+      invoiceNumber: finalInvoiceNumber,
+      totalAmount,
+      discount: 0, // discount is no longer reported to the customer purchase master
+      couponCode: appliedCoupon?.code ?? null,
+      payableAmount,
+      counterId: Number(counterId),
+      // One entry per bill line: the same product can appear more than once
+      // (once per offer application, plus a plain line).
+      items: billLines.map((item) => {
+        const mrp = Number(item.mrp) || item.price;
+        const itemDiscount = Math.max(mrp - item.price, 0) * item.quantity;
+        return {
+          productId: item.id,
+          quantity: item.quantity,
+          salePrice: item.price,
+          mrp,
+          discount: itemDiscount,
+          afterTaxation: item.price * item.quantity,
+          hsnCode: item.hsn,
+          offerId: item.offerId ?? null
+        };
+      }),
+      payments: currentPayments.map((p) => ({
+        paymentMethod: p.method,
+        bankAccountNumber: p.bankAccountNumber ?? null,
+        amountPaid: p.amount
+      }))
     };
-  }),
-  payments: currentPayments.map((p) => ({
-    paymentMethod: p.method,
-    bankAccountNumber: p.bankAccountNumber ?? null,
-    amountPaid: p.amount
-  }))
-};
+
     try {
       const response = await fetch(`${API_BASE_URL}/addTransaction`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      
       const result = await response.json();
 
       if (!response.ok) {
         throw new Error(result?.message || `Request failed with status ${response.status}`);
       }
 
-      // Note: no client-side "commit" step needed anymore — the backend
-      // (addTransaction) parses result.invoiceNumber and syncs
-      // CounterInvoice.LastInvoiceNumber for this counter as part of the
-      // same DB transaction as the sale itself.
-
       const finalizedInvoiceNumber = result?.invoiceNumber || finalInvoiceNumber;
 
+      const totalSaved =
+        billLines.reduce((s, l) => s + Math.max((Number(l.mrp) || l.price) - l.price, 0) * l.quantity, 0) +
+        safeDiscount;
+
       const customerName = selectedCustomer?.customerName ?? selectedCustomer?.name;
-      const invoiceMessage = buildInvoiceMessageText({
-        invoiceNumber: finalizedInvoiceNumber,
-        customerName,
-        items: cart,
-        totalAmount,
-        discount: safeDiscount + totalCouponDiscount,
-        taxAmount,
-        payableAmount
-      });
       sendInvoiceViaWhatsApp({
         phoneNumber: payload.phoneNumber,
         invoiceNumber: finalizedInvoiceNumber,
         customerName,
-        message: invoiceMessage
+        message: buildInvoiceMessageText({
+          invoiceNumber: finalizedInvoiceNumber,
+          customerName,
+          items: billLines,
+          totalAmount,
+          discount: totalSaved,
+          taxAmount,
+          payableAmount
+        })
       });
 
-      // ── Redeem the coupon now that the sale has actually gone through ──
-      // Only fires if a coupon is applied AND it's verified — true already
-      // for an open coupon (RequiresOtp was false), or true because
-      // handleVerifyOtp flipped it after a successful OTP check. If a
-      // customer-locked coupon somehow reached here unverified, skip the
-      // call rather than send verified:false (RedeemCoupon rejects that
-      // outright with nothing written, so there'd be no point).
       if (appliedCoupon?.verified) {
         const redemption = await redeemAppliedCoupon();
         if (!redemption.success) {
@@ -674,16 +590,10 @@ function BillingSection({ products = [], cart = [], setCart }) {
         }
       }
 
-      // ── Success: prepare receipt data before clearing state ──
-      // `cart` here already carries the coupon-adjusted `price`/`mrp` per
-      // item (from the repricing effect above), so InvoiceBill's own
-      // mrp - price math for "Disc.Amt" will show the real discount
-      // instead of ₹0.00.
-      console.log("Cart before printing:", cart);
       setCompletedInvoice({
         invoiceNumber: finalizedInvoiceNumber,
         customer: selectedCustomer,
-        cart,
+        cart: billLines, // receipt gets the split lines
         totalAmount,
         discount: safeDiscount,
         couponDiscount: totalCouponDiscount,
@@ -694,12 +604,12 @@ function BillingSection({ products = [], cart = [], setCart }) {
         completedAt: new Date().toISOString()
       });
 
-      // ── Clear quotation memory (localStorage) for this invoice ──
       const existingQuotations = JSON.parse(localStorage.getItem('savedQuotations') || '[]');
-      const updatedQuotations = existingQuotations.filter((q) => q.invoiceNumber !== invoiceNumber);
-      localStorage.setItem('savedQuotations', JSON.stringify(updatedQuotations));
+      localStorage.setItem(
+        'savedQuotations',
+        JSON.stringify(existingQuotations.filter((q) => q.invoiceNumber !== invoiceNumber))
+      );
 
-      // ── Clear payment memory (in-memory state) for this invoice ──
       setPaymentsByInvoice((prev) => {
         const updated = { ...prev };
         delete updated[invoiceNumber];
@@ -716,15 +626,11 @@ function BillingSection({ products = [], cart = [], setCart }) {
     } catch (err) {
       console.error('Transaction failed:', err);
       setTransactionError(err.message || 'Transaction failed. Please try again.');
-      // Nothing to roll back on the frontend — since the number was only
-      // ever peeked (never spent client-side), the next retry will simply
-      // peek the same next serial again from CounterInvoice.
     } finally {
       setIsSubmittingTransaction(false);
     }
   };
 
-  // ── Called when the receipt modal is closed — reset for a brand new sale ──
   const handleCloseReceipt = () => {
     try {
       localStorage.removeItem(`verifiedCoupon_${invoiceNumber ?? 'pending'}`);
@@ -741,11 +647,16 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setOtpValue('');
     setOtpError('');
     setPostSaleWarning('');
+    resetOfferUi();
     focusSearchInput();
   };
 
   return (
     <aside className="billing-sidebar bs-sidebar">
+
+      {toast && (
+        <div className="bs-offer-toast" onClick={() => setToast('')}>💡 {toast}</div>
+      )}
 
       <div className="bs-top-actions">
         <button className="bs-secondary-button" onClick={() => setIsCustomerWindowOpen(true)}>
@@ -784,11 +695,22 @@ function BillingSection({ products = [], cart = [], setCart }) {
         />
         {searchResults.length > 0 && (
           <ul className="bs-dropdown">
-            {searchResults.map(product => (
-              <li key={product.id} onClick={() => handleAddFromSearch(product)} className="bs-dropdown-item">
+            {searchResults.map((product) => (
+              <li
+                key={product.id}
+                onClick={() => handleAddFromSearch(product)}
+                className="bs-dropdown-item"
+                style={isOutOfStock(product) ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              >
                 <div className="bs-dropdown-item-info">
                   <span>{product.productName}</span>
                   <span className="bs-dropdown-barcode">Barcode: {product.barcode}</span>
+                  {isOutOfStock(product) && (
+                    <span style={{ color: '#dc3545', fontSize: '0.75rem' }}>Out of stock</span>
+                  )}
+                  {offersForProduct({ ...product, subCategoryId: resolveSubCat(product) }, offers).map((o) => (
+                    <span key={o.id} className="bs-offer-badge">🏷 {o.name}</span>
+                  ))}
                 </div>
                 <strong>₹{Number(product.retailSalePrice).toFixed(2)}</strong>
               </li>
@@ -801,23 +723,23 @@ function BillingSection({ products = [], cart = [], setCart }) {
         <h3 className="bs-section-title">
           {invoiceNumber ? `Invoice #${invoiceNumber}` : 'No customer added yet'}
         </h3>
-        {cart.length === 0 && <p className="bs-empty-text">Cart is empty.</p>}
-        {cart.map((product, index) => {
-          // product.price already reflects any coupon discount (baked in
-          // by the repricing effect above), so this is just mrp - price —
-          // no separate coupon math needed here.
+        {billLines.length === 0 && <p className="bs-empty-text">Cart is empty.</p>}
+        {billLines.map((product) => {
           const mrp = Number(product.mrp) || product.price;
           const itemDiscount = Math.max(mrp - product.price, 0) * product.quantity;
           const saleValue = product.price * product.quantity;
-          const isLatest = index === cart.length - 1;
+          const isLatest = product.id === cart[cart.length - 1]?.id;
           return (
             <div
-              key={product.id}
+              key={product.key}
               className={`bs-product-row${isLatest ? ' bs-product-row--latest' : ''}`}
             >
               <div className="bs-product-main">
                 <span className="bs-product-name">{product.name}</span>
                 <span className="bs-product-barcode">Barcode: {product.barcode}</span>
+                {product.offerName && (
+                  <span className="bs-offer-badge">🏷 {product.offerName}</span>
+                )}
               </div>
               <div className="bs-product-columns">
                 <div className="bs-product-col">
@@ -846,6 +768,36 @@ function BillingSection({ products = [], cart = [], setCart }) {
         })}
       </div>
 
+      {(applications.length > 0 || visibleReminders.length > 0) && (
+        <div className="bs-offers-panel">
+          <h3 className="bs-section-title">Offers</h3>
+
+          {applications.map((a, i) => {
+            const overridden = overriddenOfferIds.includes(a.offer.id);
+            return (
+              <p key={i} style={{ color: overridden ? '#6b7280' : '#198754', margin: '2px 0' }}>
+                {overridden
+                  ? `↪ ${a.offer.name} replaced by coupon (not combinable)`
+                  : `✓ ${a.offer.name} applied: saved ₹${a.discount.toFixed(2)}${
+                      appliedCoupon && a.offer.immuneToCoupon ? ' (coupon stacked on top)' : ''
+                    }`}
+              </p>
+            );
+          })}
+
+          {visibleReminders.map((r) => (
+            <div key={r.id} style={{ color: '#b45309', margin: '4px 0', display: 'flex', gap: 8 }}>
+              <span style={{ flex: 1 }}>💡 {r.message}</span>
+              <button
+                onClick={() => setDismissedReminders((p) => new Set(p).add(r.id))}
+                style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+                aria-label="Dismiss reminder"
+              >✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="bs-coupon-summary-row">
         <div className="bs-coupon-container">
           <h3 className="bs-section-title">Coupon Code</h3>
@@ -864,16 +816,10 @@ function BillingSection({ products = [], cart = [], setCart }) {
                   className="bs-coupon-input"
                   disabled={isVerifyingOtp}
                 />
-                <button
-                  className="bs-coupon-apply-button"
-                  onClick={handleVerifyOtp}
-                  disabled={isVerifyingOtp}
-                >
+                <button className="bs-coupon-apply-button" onClick={handleVerifyOtp} disabled={isVerifyingOtp}>
                   {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
                 </button>
-                <button className="bs-coupon-remove-button" onClick={handleRemoveCoupon}>
-                  Remove
-                </button>
+                <button className="bs-coupon-remove-button" onClick={handleRemoveCoupon}>Remove</button>
                 {otpError && <p className="bs-error-text">{otpError}</p>}
               </div>
             ) : (
@@ -881,9 +827,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
                 <span className="bs-coupon-applied-text">
                   "{appliedCoupon.code}" applied — ₹{totalCouponDiscount.toFixed(2)} off
                 </span>
-                <button className="bs-coupon-remove-button" onClick={handleRemoveCoupon}>
-                  Remove
-                </button>
+                <button className="bs-coupon-remove-button" onClick={handleRemoveCoupon}>Remove</button>
               </div>
             )
           ) : (
@@ -956,6 +900,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
       </div>
 
       <div className="bs-bottom-actions">
+        {/* Offers and reminders never disable this button */}
         <button
           className="bs-primary-button bs-primary-button--payment"
           onClick={() => setIsPaymentWindowOpen(true)}
