@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Plus, Trash2, Power } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Power, Layers, Search, X } from 'lucide-react'
 
 // Change this if your API lives on a different base URL
 const API = 'https://gripstyleapi.runasp.net/api/MOffer'
+const GROUP_API = 'https://gripstyleapi.runasp.net/api/MTempGroup'
 const MAX_SLOTS = 10
+const MAX_GROUP_BARCODES = 500
 
 // Offer type ids match the ones seeded in the backend (1 flat, 2 percent, 3 bxgy, 4 bundle)
 export const OFFER_TYPES = {
@@ -65,18 +67,202 @@ async function request(url, options) {
   return res.json()
 }
 
-const emptySlot = () => ({ categoryId: '', subCategoryId: '', qty: 1 })
+// A slot is either a plain sub-category, or (isGroup) a custom group of hand-picked barcodes
+// that all belong to the chosen sub-category. For a group slot the picked barcodes are what count;
+// the group itself is only created in the backend when the offer is saved.
+const emptySlot = () => ({ categoryId: '', subCategoryId: '', qty: 1, isGroup: false, barcodes: [] })
 
-// ---------------- slot editor (category is only a filter, never saved) ----------------
+// ---------------- custom group barcode picker ----------------
+// Always limited to the category + sub-category chosen in the slot row.
+
+function CustomGroupPicker({ categoryId, subCategoryId, scopeLabel, initial, onConfirm, onCancel }) {
+  const [search, setSearch] = useState('')
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+  const [note, setNote] = useState('')
+  const [selected, setSelected] = useState(() => new Set(initial))
+
+  const buildParams = useCallback(() => {
+    const p = new URLSearchParams()
+    if (categoryId) p.set('categoryId', categoryId)
+    if (subCategoryId) p.set('subCategoryId', subCategoryId)
+    if (search.trim()) p.set('search', search.trim())
+    return p
+  }, [categoryId, subCategoryId, search])
+
+  // Debounced fetch of the products shown in the list
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setErr('')
+    const t = setTimeout(async () => {
+      try {
+        const p = buildParams()
+        p.set('take', '200')
+        const list = await request(`${GROUP_API}/products?${p.toString()}`)
+        if (!cancelled) setItems(list)
+      } catch (e) {
+        if (!cancelled) setErr(e.message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [buildParams])
+
+  const toggle = (barcode) => {
+    setNote('')
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(barcode)) {
+        next.delete(barcode)
+      } else {
+        if (next.size >= MAX_GROUP_BARCODES) {
+          setNote(`A group can hold at most ${MAX_GROUP_BARCODES} barcodes`)
+          return prev
+        }
+        next.add(barcode)
+      }
+      return next
+    })
+  }
+
+  // "Select all" asks the API for every barcode that fits the current filters
+  const selectAllMatching = async () => {
+    setErr('')
+    setNote('')
+    try {
+      const res = await request(`${GROUP_API}/products/barcodes?${buildParams().toString()}`)
+      setSelected((prev) => {
+        const next = new Set(prev)
+        let hitLimit = false
+        for (const b of res.barcodes) {
+          if (next.size >= MAX_GROUP_BARCODES) {
+            hitLimit = true
+            break
+          }
+          next.add(b)
+        }
+        if (hitLimit || res.truncated) setNote(`Stopped at the ${MAX_GROUP_BARCODES}-barcode limit`)
+        return next
+      })
+    } catch (e) {
+      setErr(e.message)
+    }
+  }
+
+  return (
+    <div className="of-picker">
+      <div className="of-picker__head">
+        <strong>Custom group · {scopeLabel}</strong>
+        <button type="button" className="of-icon-btn of-icon-btn--sm" onClick={onCancel} aria-label="Close">
+          <X size={15} />
+        </button>
+      </div>
+
+      <p className="of-hint" style={{ margin: '0 0 8px' }}>
+        Tick the barcodes from this sub-category that should be in the group. The group name is
+        created automatically when you save the offer.
+      </p>
+
+      <div className="of-search">
+        <Search size={15} />
+        <input
+          className="of-input"
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search barcode"
+        />
+      </div>
+
+      <div className="of-picker__bar">
+        <span>
+          <strong>{selected.size}</strong> selected
+        </span>
+        <span className="of-picker__bar-actions">
+          <button type="button" className="of-link-btn" onClick={selectAllMatching}>
+            Select all{search.trim() ? ' matching' : ''}
+          </button>
+          <button
+            type="button"
+            className="of-link-btn"
+            onClick={() => {
+              setSelected(new Set())
+              setNote('')
+            }}
+            disabled={selected.size === 0}
+          >
+            Clear
+          </button>
+        </span>
+      </div>
+
+      {err && <p className="of-msg of-msg--error">{err}</p>}
+      {note && <p className="of-msg of-msg--warn">{note}</p>}
+
+      <div className="of-picker__list">
+        {loading && items.length === 0 && <p className="of-hint">Loading…</p>}
+        {!loading && items.length === 0 && !err && (
+          <p className="of-hint">No products found in this sub-category.</p>
+        )}
+        {items.map((p) => (
+          <label key={p.barcode} className={`of-prod ${selected.has(p.barcode) ? 'is-on' : ''}`}>
+            <input
+              type="checkbox"
+              checked={selected.has(p.barcode)}
+              onChange={() => toggle(p.barcode)}
+            />
+            <span className="of-prod__code">{p.barcode}</span>
+            <span className="of-prod__meta">
+              {p.subCategoryName} · {p.categoryName}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <div className="of-picker__foot">
+        <button type="button" className="of-ghost-btn" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="of-solid-btn"
+          disabled={selected.size === 0}
+          onClick={() => onConfirm(Array.from(selected))}
+        >
+          Create group with {selected.size} barcode{selected.size === 1 ? '' : 's'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------- slot editor ----------------
 
 function SlotEditor({ title, hint, slots, onChange, categories, subsByCat, ensureSubs }) {
+  const [pickerIndex, setPickerIndex] = useState(null)
+
   const update = (i, patch) =>
     onChange(slots.map((s, idx) => (idx === i ? { ...s, ...patch } : s)))
-  const remove = (i) => onChange(slots.filter((_, idx) => idx !== i))
+  const remove = (i) => {
+    setPickerIndex(null)
+    onChange(slots.filter((_, idx) => idx !== i))
+  }
   const add = () => onChange([...slots, emptySlot()])
 
+  // Only plain sub-category rows block each other; groups are identified by their barcodes
   const takenElsewhere = (i) =>
-    new Set(slots.filter((_, idx) => idx !== i).map((s) => String(s.subCategoryId)).filter(Boolean))
+    new Set(
+      slots
+        .filter((s, idx) => idx !== i && !s.isGroup)
+        .map((s) => String(s.subCategoryId))
+        .filter(Boolean)
+    )
 
   return (
     <section className="of-block">
@@ -91,6 +277,10 @@ function SlotEditor({ title, hint, slots, onChange, categories, subsByCat, ensur
       {slots.map((s, i) => {
         const subs = s.categoryId ? subsByCat[s.categoryId] : null
         const taken = takenElsewhere(i)
+        const catName = categories.find((c) => String(c.id) === String(s.categoryId))?.name
+        const subName = subs?.find((sc) => String(sc.id) === String(s.subCategoryId))?.name
+        const scopeLabel = subName ? `${subName}${catName ? ` (${catName})` : ''}` : 'the chosen sub-category'
+
         return (
           <div className="of-slot" key={i}>
             <select
@@ -98,7 +288,8 @@ function SlotEditor({ title, hint, slots, onChange, categories, subsByCat, ensur
               value={s.categoryId}
               onChange={(e) => {
                 const v = e.target.value
-                update(i, { categoryId: v, subCategoryId: '' })
+                setPickerIndex(null)
+                update(i, { categoryId: v, subCategoryId: '', isGroup: false, barcodes: [] })
                 if (v) ensureSubs(v)
               }}
               aria-label="Category"
@@ -115,14 +306,18 @@ function SlotEditor({ title, hint, slots, onChange, categories, subsByCat, ensur
               className="of-input"
               value={s.subCategoryId}
               disabled={!s.categoryId || !subs}
-              onChange={(e) => update(i, { subCategoryId: e.target.value })}
+              onChange={(e) => {
+                setPickerIndex(null)
+                // a new sub-category throws away any group picked for the old one
+                update(i, { subCategoryId: e.target.value, isGroup: false, barcodes: [] })
+              }}
               aria-label="Sub-category"
             >
               <option value="">
                 {!s.categoryId ? 'Pick a category first' : !subs ? 'Loading…' : 'Sub-category…'}
               </option>
               {(subs || [])
-                .filter((sc) => !taken.has(String(sc.id)))
+                .filter((sc) => !taken.has(String(sc.id)) || String(sc.id) === String(s.subCategoryId))
                 .map((sc) => (
                   <option key={sc.id} value={sc.id}>
                     {sc.name}
@@ -149,6 +344,60 @@ function SlotEditor({ title, hint, slots, onChange, categories, subsByCat, ensur
             >
               <Trash2 size={16} />
             </button>
+
+            {/* custom group option: appears once a sub-category is chosen */}
+            {s.subCategoryId && pickerIndex !== i && !s.isGroup && (
+              <div className="of-slot__extra">
+                <button type="button" className="of-link-btn" onClick={() => setPickerIndex(i)}>
+                  <Layers size={14} /> Create custom group from this sub-category
+                </button>
+              </div>
+            )}
+
+            {s.isGroup && pickerIndex !== i && (
+              <div className="of-slot__extra">
+                <div className="of-groupbar">
+                  <div className="of-groupbar__text">
+                    <strong>
+                      Custom group · {s.barcodes.length} barcode{s.barcodes.length === 1 ? '' : 's'}
+                    </strong>
+                    <span>
+                      {s.barcodes.slice(0, 4).join(', ')}
+                      {s.barcodes.length > 4 ? ` +${s.barcodes.length - 4} more` : ''}
+                    </span>
+                    <span>The group name is created automatically when you save the offer.</span>
+                  </div>
+                  <div className="of-groupbar__actions">
+                    <button type="button" className="of-link-btn" onClick={() => setPickerIndex(i)}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="of-link-btn"
+                      onClick={() => update(i, { isGroup: false, barcodes: [] })}
+                    >
+                      Use whole sub-category
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {pickerIndex === i && (
+              <div className="of-slot__extra">
+                <CustomGroupPicker
+                  categoryId={s.categoryId}
+                  subCategoryId={s.subCategoryId}
+                  scopeLabel={scopeLabel}
+                  initial={s.barcodes}
+                  onCancel={() => setPickerIndex(null)}
+                  onConfirm={(barcodes) => {
+                    update(i, { isGroup: true, barcodes })
+                    setPickerIndex(null)
+                  }}
+                />
+              </div>
+            )}
           </div>
         )
       })}
@@ -171,9 +420,14 @@ function rewardText(o) {
   return 'GET items free'
 }
 
-// Shows the sub-category name from the API, falling back to the id if it is ever missing
+// subCategoryName is the sub-category name, or the group name when isGroup is true
 const slotsText = (slots) =>
-  slots.map((s) => `${s.subCategoryName ?? `#${s.subCategoryId}`} × ${s.qty}`).join(', ')
+  slots
+    .map((s) => {
+      const label = s.subCategoryName ?? `#${s.subCategoryId}`
+      return `${label}${s.isGroup ? ' (custom group)' : ''} × ${s.qty}`
+    })
+    .join(', ')
 
 // ---------------- the page ----------------
 
@@ -250,7 +504,13 @@ export function OfferTypePage({ config, onBack }) {
   }
 
   const validateSlots = (slots, label) => {
-    if (slots.some((s) => !s.subCategoryId)) return `Choose a sub-category for every ${label} row`
+    for (const s of slots) {
+      if (!s.categoryId) return `Choose a category for every ${label} row`
+      if (!s.subCategoryId) return `Choose a sub-category for every ${label} row`
+      if (s.isGroup && s.barcodes.length === 0) {
+        return `Pick at least one barcode for the custom group in ${label}`
+      }
+    }
     if (slots.some((s) => !(Number(s.qty) >= 1))) return `Every ${label} quantity must be at least 1`
     return null
   }
@@ -293,29 +553,76 @@ export function OfferTypePage({ config, onBack }) {
       }
     }
 
-    const toSlots = (list) =>
-      list.map((s) => ({ subCategoryId: Number(s.subCategoryId), qty: Number(s.qty) }))
-
-    const payload = {
-      name: name.trim(),
-      offerTypeId: config.typeId,
-      isActive,
-      validTill: validTill || null,
-      immuneToCoupon,
-      buySlots: toSlots(buySlots),
-      getSlots: config.hasGet ? toSlots(getSlots) : [],
-      comboPrice,
-      discountPercentage,
-      flatAmount,
-    }
-
     setSaving(true)
+
+    // Groups created during this save. If anything fails they are deleted again,
+    // so a failed offer never leaves orphan groups behind.
+    const createdGroupIds = []
+
+    // Turns UI slots into API slots. A custom-group slot first creates its group:
+    //   POST /api/MTempGroup { subCategoryId, barcodes }
+    // The backend checks every barcode belongs to that sub-category, auto-generates the group name,
+    // saves the barcodes and returns the group id. That id goes into the offer slot with isGroup = true,
+    // and the offer API then sets the slot's IsTempGrp flag and stores the id in its TempGrp column.
+    const resolveSlots = async (list) => {
+  const out = []
+
+  for (const s of list) {
+    if (s.isGroup) {
+      const group = await request(GROUP_API, {
+        method: 'POST',
+        body: JSON.stringify({
+          subCategoryId: Number(s.subCategoryId),
+          barcodes: s.barcodes,
+        }),
+      })
+
+      createdGroupIds.push(group.id)
+
+      out.push({
+        subCategoryId: Number(s.subCategoryId),
+        tempGroupId: Number(group.id),
+        isGroup: true,
+        qty: Number(s.qty),
+      })
+    } else {
+      out.push({
+        subCategoryId: Number(s.subCategoryId),
+        tempGroupId: null,
+        isGroup: false,
+        qty: Number(s.qty),
+      })
+    }
+  }
+
+  return out
+}
+
     try {
+      const buy = await resolveSlots(buySlots)
+      const get = config.hasGet ? await resolveSlots(getSlots) : []
+
+      const payload = {
+        name: name.trim(),
+        offerTypeId: config.typeId,
+        isActive,
+        validTill: validTill || null,
+        immuneToCoupon,
+        buySlots: buy,
+        getSlots: get,
+        comboPrice,
+        discountPercentage,
+        flatAmount,
+      }
+
       await request(API, { method: 'POST', body: JSON.stringify(payload) })
       setSuccess('Offer saved')
       resetForm()
       loadOffers()
     } catch (err) {
+      await Promise.allSettled(
+        createdGroupIds.map((id) => request(`${GROUP_API}/${id}`, { method: 'DELETE' }))
+      )
       setError(err.message)
     } finally {
       setSaving(false)
@@ -414,7 +721,7 @@ export function OfferTypePage({ config, onBack }) {
 
           <SlotEditor
             title={config.hasGet ? 'BUY — customer buys' : 'Applies to'}
-            hint="Pick a category to filter, then choose the sub-category and how many units are needed."
+            hint="Pick a category, then a sub-category and how many units are needed. To include only some products, choose “Create custom group” and tick the barcodes."
             slots={buySlots}
             onChange={setBuySlots}
             categories={categories}
@@ -425,7 +732,7 @@ export function OfferTypePage({ config, onBack }) {
           {config.hasGet && (
             <SlotEditor
               title="GET — customer receives"
-              hint="The sub-categories (and quantities) the customer gets."
+              hint="The sub-categories (or custom groups) and quantities the customer gets."
               slots={getSlots}
               onChange={setGetSlots}
               categories={categories}
@@ -599,6 +906,7 @@ export function OfferTypePage({ config, onBack }) {
         }
         .of-slot .of-input--qty { grid-column: 1; }
         .of-slot .of-icon-btn { grid-column: 2; justify-self: end; }
+        .of-slot__extra { grid-column: 1 / -1; }
 
         .of-icon-btn {
           width: 40px; height: 40px; border-radius: 10px; border: 1.5px solid #D9D6E4;
@@ -607,6 +915,7 @@ export function OfferTypePage({ config, onBack }) {
         }
         .of-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .of-icon-btn--danger { color: #B3261E; }
+        .of-icon-btn--sm { width: 30px; height: 30px; border-radius: 8px; }
 
         .of-ghost-btn {
           display: inline-flex; align-items: center; gap: 6px; border: 1.5px dashed var(--base);
@@ -614,6 +923,52 @@ export function OfferTypePage({ config, onBack }) {
           padding: 9px 14px; border-radius: 10px; cursor: pointer;
         }
         .of-ghost-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .of-solid-btn {
+          border: none; background: var(--base); color: #fff; font-weight: 600; font-size: 13.5px;
+          padding: 10px 16px; border-radius: 10px; cursor: pointer;
+        }
+        .of-solid-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .of-link-btn {
+          display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent;
+          color: var(--deep); font-weight: 600; font-size: 13px; padding: 6px 0; cursor: pointer;
+          text-decoration: underline; text-underline-offset: 3px;
+        }
+        .of-link-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .of-groupbar {
+          display: flex; justify-content: space-between; gap: 10px; align-items: flex-start;
+          background: #F4F2FA; border: 1.5px solid var(--base); border-radius: 12px; padding: 10px 12px;
+        }
+        .of-groupbar__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 12.5px; color: #4A4560; word-break: break-word; }
+        .of-groupbar__text strong { color: #1C1A24; font-size: 13.5px; }
+        .of-groupbar__actions { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+
+        .of-picker {
+          border: 1.5px solid var(--base); border-radius: 14px; padding: 12px; background: #FCFBFF;
+        }
+        .of-picker__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; }
+        .of-search { position: relative; margin-bottom: 8px; }
+        .of-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #8A85A0; pointer-events: none; }
+        .of-search .of-input { padding-left: 32px; }
+        .of-picker__bar { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 6px; }
+        .of-picker__bar-actions { display: flex; gap: 14px; }
+        .of-picker__list {
+          max-height: 260px; overflow-y: auto; border: 1px solid #E2DFEC; border-radius: 10px;
+          background: #fff; margin-bottom: 10px;
+        }
+        .of-picker__list .of-hint { margin: 12px; }
+        .of-prod {
+          display: grid; grid-template-columns: 22px 1fr; gap: 2px 10px; align-items: center;
+          padding: 9px 12px; border-bottom: 1px solid #F0EEF6; cursor: pointer;
+        }
+        .of-prod:last-child { border-bottom: none; }
+        .of-prod.is-on { background: #F1EEFA; }
+        .of-prod input { width: 18px; height: 18px; accent-color: var(--base); grid-row: 1 / span 2; }
+        .of-prod__code { font-weight: 600; font-size: 13.5px; }
+        .of-prod__meta { font-size: 12px; color: #6B667F; }
+        .of-picker__foot { display: flex; justify-content: flex-end; gap: 8px; }
 
         .of-radios { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
         .of-radio {
@@ -625,6 +980,7 @@ export function OfferTypePage({ config, onBack }) {
 
         .of-msg { font-size: 13.5px; border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
         .of-msg--error { background: #FDECEA; color: #8C1D18; }
+        .of-msg--warn { background: #FFF1DA; color: #8F5720; }
         .of-msg--ok { background: #E6F4EA; color: #1E6B35; }
 
         .of-primary {
@@ -655,6 +1011,7 @@ export function OfferTypePage({ config, onBack }) {
         @media (min-width: 480px) {
           .of-slot { grid-template-columns: 1.2fr 1.2fr 80px 40px; align-items: center; }
           .of-slot .of-input--qty, .of-slot .of-icon-btn { grid-column: auto; }
+          .of-slot .of-slot__extra { grid-column: 1 / -1; }
         }
       `}</style>
     </div>
