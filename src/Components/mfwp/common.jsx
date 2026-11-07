@@ -94,7 +94,7 @@ select.url{margin-bottom:12px}
 .nv .ic{font-size:20px}
 .nv .bd{position:absolute;top:3px;left:calc(50% + 6px)}
 .tabs{display:flex;background:var(--teal)}
-.tabs button{flex:1;color:#fff;opacity:.7;padding:10px 4px;border-bottom:3px solid transparent;font-weight:500}
+.tabs button{flex:1;color:#fff;opacity:.7;padding:10px 4px;border-bottom:3px solid transparent;font-weight:500;font-size:13px}
 .tabs button.on{opacity:1;border-color:#fff}
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .card{background:var(--panel);border-radius:10px;padding:12px}
@@ -170,9 +170,9 @@ export const chatAction = async (chatId, path, body, ask) => {
   return true;
 };
 const ASK = {
-  done: 'Mark as order completed and remove from your list? New messages from this number will still come to you.',
-  cancel: 'Mark as cancelled and remove from your list? New messages from this number will still come to you.',
-  release: 'Send this chat back to the common inbox? New messages from this number will no longer come to you.'
+  done: 'Mark as order completed and remove from the list? New messages from this number will still go to the same coworker.',
+  cancel: 'Mark as cancelled and remove from the list? New messages from this number will still go to the same coworker.',
+  release: 'Send this chat back to the common inbox? New messages from this number will no longer go to a coworker.'
 };
 
 export const hm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -268,7 +268,7 @@ function Login({ page }) {
   return (
     <div className="app"><div className="qr">
       <h2>Sign in to {TITLES[page]}</h2>
-      <p>{step ? 'Enter the 6-digit code we sent to your WhatsApp.' : 'Enter your WhatsApp number to get a login code on WhatsApp.'}</p>
+      <p>{step ? 'Enter the 6-digit code we sent to your WhatsApp.' : 'Enter your WhatsApp number. Only numbers added by the admin can sign in; you will get a login code on WhatsApp.'}</p>
       {step
         ? <input className="url" inputMode="numeric" maxLength={6} placeholder="123456" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => e.key === 'Enter' && verify()} />
         : <PhoneInput value={phone} onChange={setPhone} onEnter={send} />}
@@ -371,8 +371,9 @@ function Body({ m }) {
   );
 }
 
-// free chat (nobody handling)  -> read it, "Claim this chat" replaces the message box
-// handled by someone else      -> read only (admin can still reply and manage it)
+// free chat (nobody handling)  -> read it; staff get "Claim this chat" in place of the message box,
+//                                 the admin can type directly and has a ✋ Claim button in the header
+// handled by someone else      -> read only for staff; the admin can still reply and use the ⋮ menu (transfer etc.)
 // handled by me                -> message box + ⋮ menu (order completed / cancelled / transfer / back to inbox)
 function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
   const id = chat.id;
@@ -380,8 +381,10 @@ function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
   const mine = owner?.id === user.id;
   const isAdmin = user.role === 'admin';
   const free = !chat.isNew && !owner;
-  const canType = chat.isNew || mine || (isAdmin && !!owner);
-  const canManage = !chat.isNew && !!owner && (mine || isAdmin);
+  // The admin can reply in any chat; coworkers only in the chats they handle (or a brand-new number).
+  const canType = chat.isNew || mine || isAdmin;
+  // The handler or the admin can close / transfer / release.
+  const canManage = !chat.isNew && (mine || isAdmin);
 
   const [text, setText] = useState('');
   const [more, setMore] = useState(false);
@@ -394,7 +397,7 @@ function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
   useEffect(() => {
     if (chat.isNew) return;
     api(`/messages/${enc(id)}?limit=40`).then((r) => { if (r.success) { setMsgs((p) => ({ ...p, [id]: r.messages })); setMore(r.hasMore); } });
-    post('/presence/subscribe', { chatId: id });
+    if (!isAdmin || owner?.id === user.id || !owner) post('/presence/subscribe', { chatId: id });
   }, [id]);
 
   // Only the person handling the chat marks it as read (looking at it from the inbox does not)
@@ -499,14 +502,19 @@ function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
         <div className="hd"><Avatar id={id} name={chat.name} size={40} /><div style={{ minWidth: 0 }}><b>{chat.name}</b><small>{status}</small></div></div>
         {waLink && <a className="ib" href={waLink} target="_blank" rel="noopener noreferrer" title="Voice call (opens WhatsApp)">📞</a>}
         {waLink && <a className="ib" href={waLink} target="_blank" rel="noopener noreferrer" title="Video call (opens WhatsApp)">🎥</a>}
+        {free && isAdmin && <button className="ib" title="Claim this chat" onClick={claim}>✋</button>}
         {canManage && <button className="ib" title="Chat actions" onClick={() => setMenu(!menu)}>⋮</button>}
       </div>
 
       {menu && canManage && (
         <div className="sheet">
-          <button className="sm ok" onClick={() => act('/chats/close', { outcome: 'cleared' }, 'Mark as order completed and remove from your list? New messages from this number will still come to you.')}>✔ Order completed</button>
-          <button className="sm no" onClick={() => act('/chats/close', { outcome: 'cancelled' }, 'Mark as cancelled and remove from your list? New messages from this number will still come to you.')}>✖ Cancelled</button>
-          <button className="sm" onClick={() => act('/chats/release', {}, 'Send this chat back to the common inbox? New messages from this number will no longer come to you.')}>↩ Back to inbox</button>
+          {owner && (
+            <>
+              <button className="sm ok" onClick={() => act('/chats/close', { outcome: 'cleared' }, ASK.done)}>✔ Order completed</button>
+              <button className="sm no" onClick={() => act('/chats/close', { outcome: 'cancelled' }, ASK.cancel)}>✖ Cancelled</button>
+              <button className="sm" onClick={() => act('/chats/release', {}, ASK.release)}>↩ Back to inbox</button>
+            </>
+          )}
           <select className="url" value="" onChange={(e) => {
             const sel = e.target;
             const uid = Number(sel.value);
@@ -537,7 +545,7 @@ function Chat({ chat, list, setMsgs, typing, user, team, onBack, onSent }) {
         })}
       </div>
 
-      {free && <div className="bar"><button className="btn" onClick={claim}>Claim this chat</button></div>}
+      {free && !isAdmin && <div className="bar"><button className="btn" onClick={claim}>Claim this chat</button></div>}
       {!free && !canType && <div className="info">👤 {owner?.name} is handling this chat. You can read it but not reply.</div>}
       {canType && (
         <div className="bar">

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Shell, Top, ChatList, PhoneInput, fullPhone, api, post, fmt } from './common';
 
 // Route: /adminwp   (admin number only, has its own login)
-// Dashboard (who follows how many, how many converted), All chats (monitor), Team (add coworkers, WhatsApp link).
+// Dashboard, Handlers (who has which number), All chats (monitor), Team (coworkers + WhatsApp link).
 
 const LABEL = { active: 'Following', cleared: 'Order completed', cancelled: 'Cancelled', transferred: 'Transferred', released: 'Back to inbox' };
 const rate = (c, x) => (c + x ? Math.round((100 * c) / (c + x)) + '%' : '–');
@@ -38,7 +38,7 @@ function Stats() {
       </div>
 
       <h3>By coworker</h3>
-      {!d.agents.length && <p className="empty">No coworkers yet. </p>}
+      {!d.agents.length && <p className="empty">No coworkers yet.</p>}
       {d.agents.map((a) => (
         <div className="trow" key={a.id}>
           <div>
@@ -59,6 +59,43 @@ function Stats() {
   );
 }
 
+// Who is handling which numbers right now (GET /admin/handlers). Tap a row to read the chat (read-only).
+function Handlers({ team, onOpen }) {
+  const [uid, setUid] = useState(0);
+  const [d, setD] = useState(null);
+  useEffect(() => {
+    let on = true;
+    const load = () => api('/admin/handlers' + (uid ? '?userId=' + uid : '')).then((r) => on && r.success && setD(r)).catch(() => {});
+    load();
+    const t = setInterval(load, 15000);
+    return () => { on = false; clearInterval(t); };
+  }, [uid]);
+  const agents = team.filter((t) => t.role === 'agent');
+  return (
+    <div className="list pad">
+      <select className="url" value={uid} onChange={(e) => { setD(null); setUid(Number(e.target.value)); }}>
+        <option value={0}>All coworkers</option>
+        {agents.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+      {!d && <p className="empty">Loading…</p>}
+      {d && <p style={{ color: 'var(--mu)', fontSize: 13 }}>{d.total} chat{d.total === 1 ? '' : 's'} being handled right now</p>}
+      {d && !d.byUser.length && <p className="empty">Nobody is handling any chat.</p>}
+      {d && d.byUser.map((g) => (
+        <div key={g.id}>
+          <h3>{g.name} · +{g.phone} ({g.chats.length})</h3>
+          {g.chats.map((c) => (
+            <div className="trow" key={c.chatId} style={{ cursor: 'pointer' }}
+              onClick={() => onOpen({ id: c.chatId, name: c.name, isGroup: c.chatId.endsWith('@g.us') })}>
+              <div><b>{c.name}</b><small>since {fmt(c.since / 1000)}{c.lastMessageTime ? ' · last message ' + fmt(c.lastMessageTime) : ''}</small></div>
+              {c.unreadCount > 0 && <span className="bd">{c.unreadCount}</span>}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Team({ team, setTeam, st }) {
   const [f, setF] = useState({ name: '', phone: '' });
   const reload = () => api('/admin/users').then((r) => r.success && setTeam(r.users));
@@ -70,13 +107,19 @@ function Team({ team, setTeam, st }) {
     else if (after) after();
     reload();
   };
+  const disconnect = async () => {
+    if (!confirm('Disconnect WhatsApp? This clears ALL stored chats, messages and media on the server, and everybody’s chats go back to the inbox.')) return;
+    const r = await post('/whatsapp/logout', {});
+    if (!r.success) return alert(r.message || 'Failed');
+    setTimeout(() => location.reload(), 1500);
+  };
   return (
     <div className="list pad">
-      <h3>Name a coworker</h3>
-      <p className="hint" style={{ color: 'var(--mu)', fontSize: 13, marginBottom: 8 }}>Anyone can log in with their WhatsApp number and shows up by number. Add the same number here to give them a name.</p>
+      <h3>Add a coworker</h3>
+      <p style={{ color: 'var(--mu)', fontSize: 13, marginBottom: 8 }}>Only numbers added here can sign in. They get a login code on WhatsApp. Adding an existing number updates the name and re-enables it.</p>
       <input className="url" placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
       <PhoneInput value={f.phone} onChange={(v) => setF({ ...f, phone: v })} />
-      <button className="btn" onClick={() => run(post('/admin/users', { name: f.name, phone: fullPhone(f.phone) }), () => setF({ name: '', phone: '' }))}>Save name</button>
+      <button className="btn" onClick={() => run(post('/admin/users', { name: f.name, phone: fullPhone(f.phone) }), () => setF({ name: '', phone: '' }))}>Add coworker</button>
 
       <h3>Coworkers</h3>
       {!agents.length && <p className="empty">No coworkers yet.</p>}
@@ -84,16 +127,24 @@ function Team({ team, setTeam, st }) {
         <div className="trow" key={t.id}>
           <div><b>{t.name}{!t.active && ' (disabled)'}</b><small>{t.phone ? '+' + t.phone : ''} · {t.chats ?? 0} chats</small></div>
           <button className="sm" onClick={() => { const n = prompt('Name for +' + t.phone, t.name); if (n && n.trim()) run(post('/admin/users/' + t.id, { name: n.trim() }, 'PATCH')); }}>Rename</button>
-          <button className="sm" onClick={() => run(post('/admin/users/' + t.id, { active: !t.active }, 'PATCH'))}>{t.active ? 'Disable' : 'Enable'}</button>
+          <button className="sm" onClick={() => {
+            if (t.active && !confirm('Disable ' + t.name + '? They are signed out and their chats go back to the inbox.')) return;
+            run(post('/admin/users/' + t.id, { active: !t.active }, 'PATCH'));
+          }}>{t.active ? 'Disable' : 'Enable'}</button>
           <button className="sm" onClick={() => confirm('Remove ' + t.name + '? Their chats go back to the inbox.') && run(api('/admin/users/' + t.id, { method: 'DELETE' }))}>Remove</button>
         </div>
       ))}
 
-      {st.qr && (
+      <h3>WhatsApp</h3>
+      {st.ready ? (
         <>
-          <h3>WhatsApp</h3>
-          <div className="qr" style={{ padding: '0 0 16px' }}><p>Scan with WhatsApp → Linked devices</p><img src={st.qr} alt="QR code" /></div>
+          <p style={{ color: 'var(--mu)', fontSize: 13, marginBottom: 10 }}>✅ Connected</p>
+          <button className="btn alt" onClick={disconnect}>Disconnect WhatsApp</button>
         </>
+      ) : st.qr ? (
+        <div className="qr" style={{ padding: '0 0 16px' }}><p>Scan with WhatsApp → Linked devices</p><img src={st.qr} alt="QR code" /></div>
+      ) : (
+        <p style={{ color: 'var(--mu)', fontSize: 13 }}>Not connected. Waiting for a QR code…</p>
       )}
     </div>
   );
@@ -121,11 +172,12 @@ export default function AdminPage() {
         <>
           <Top title={`Admin · ${user.name}`} />
           <div className="tabs">
-            {[['stats', 'Dashboard'], ['all', 'All chats'], ['team', 'Team']].map(([k, l]) => (
+            {[['stats', 'Dashboard'], ['handlers', 'Handlers'], ['all', 'All chats'], ['team', 'Team']].map(([k, l]) => (
               <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
             ))}
           </div>
           {tab === 'stats' && <Stats />}
+          {tab === 'handlers' && <Handlers team={team} onOpen={openChat} />}
           {tab === 'all' && <AllChats chats={chats} onOpen={openChat} />}
           {tab === 'team' && <Team team={team} setTeam={setTeam} st={st} />}
         </>
