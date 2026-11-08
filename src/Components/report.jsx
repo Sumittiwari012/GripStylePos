@@ -31,6 +31,9 @@ const formatDateForApi = (date) => {
 
 const todayStr = () => formatDateForApi(new Date());
 
+// The Trend chart leaves Cash out
+const CHART_METHODS = Object.entries(METHOD_META).filter(([label]) => label !== 'Cash');
+
 function Report() {
   const [startDate, setStartDate] = useState(todayStr());
   const [endDate, setEndDate] = useState(todayStr());
@@ -199,20 +202,20 @@ function Report() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Build one combined dataset: date -> { Cash, Card, UPI, Wallet }
+  // Build one combined dataset: date -> { Card, UPI, Wallet } (Cash is not charted)
   const chartData = useMemo(() => {
     if (!reportData) return [];
 
     const byDate = {};
 
-    Object.entries(METHOD_META).forEach(([label, meta]) => {
+    CHART_METHODS.forEach(([label, meta]) => {
       const section = reportData[meta.key];
       if (!section?.invoices) return;
 
       section.invoices.forEach((inv) => {
         const dateKey = (inv.paymentDate || '').slice(0, 10); // yyyy-MM-dd
         if (!byDate[dateKey]) {
-          byDate[dateKey] = { date: dateKey, Cash: 0, Card: 0, UPI: 0, Wallet: 0 };
+          byDate[dateKey] = { date: dateKey, Card: 0, UPI: 0, Wallet: 0 };
         }
         byDate[dateKey][label] += inv.amountPaid;
       });
@@ -300,7 +303,7 @@ function Report() {
 
       {reportData && (
         <>
-          {/* ── 4 payment method cards ── */}
+          {/* ── 4 payment method cards (Cash shows only its transaction count, no amount) ── */}
           <div style={styles.summaryGrid}>
             {Object.entries(METHOD_META).map(([label, meta]) => {
               const section = reportData[meta.key];
@@ -309,9 +312,11 @@ function Report() {
                   <div style={{ ...styles.summaryCardBar, backgroundColor: meta.color }} />
                   <div style={styles.summaryCardBody}>
                     <span style={styles.summaryCardLabel}>{label}</span>
-                    <span style={styles.summaryCardAmount}>
-                      ₹{Number(section?.totalAmount ?? 0).toFixed(2)}
-                    </span>
+                    {label !== 'Cash' && (
+                      <span style={styles.summaryCardAmount}>
+                        ₹{Number(section?.totalAmount ?? 0).toFixed(2)}
+                      </span>
+                    )}
                     <span style={styles.summaryCardCount}>
                       {section?.transactionCount ?? 0} transaction{(section?.transactionCount ?? 0) === 1 ? '' : 's'}
                     </span>
@@ -328,7 +333,7 @@ function Report() {
             Excludes ₹{walletAmount.toFixed(2)} in wallet payments (already counted when the wallet was funded).
           </p>
 
-          {/* ── Invoice-level breakdown per method ── */}
+          {/* ── Invoice-level breakdown per method (Cash shows only a count, no invoices) ── */}
           <div style={styles.detailGrid}>
             {Object.entries(METHOD_META).map(([label, meta]) => {
               const section = reportData[meta.key];
@@ -336,8 +341,16 @@ function Report() {
               return (
                 <div key={label} style={styles.detailCard}>
                   <h3 style={{ ...styles.detailTitle, color: meta.color }}>{label}</h3>
-                  {invoices.length === 0 && <p style={styles.emptyText}>No transactions.</p>}
-                  {invoices.length > 0 && (
+                  {label === 'Cash' ? (
+                    // Cash: no invoice-level details, the card above already shows the count
+                    <p style={styles.emptyText}>
+                      {invoices.length === 0
+                        ? 'No transactions.'
+                        : `${invoices.length} cash transaction${invoices.length === 1 ? '' : 's'}.`}
+                    </p>
+                  ) : invoices.length === 0 ? (
+                    <p style={styles.emptyText}>No transactions.</p>
+                  ) : (
                     <div style={styles.invoiceList}>
                       {invoices.map((inv, idx) => (
                         <div key={`${inv.invoiceNumber}-${idx}`} style={styles.invoiceRow}>
@@ -391,7 +404,7 @@ function Report() {
                   <YAxis tick={{ fontSize: 12 }} />
                   <Tooltip formatter={(value) => `₹${Number(value).toFixed(2)}`} />
                   <Legend />
-                  {Object.entries(METHOD_META).map(([label, meta]) =>
+                  {CHART_METHODS.map(([label, meta]) =>
                     chartType === 'line' ? (
                       <Line
                         key={label}
