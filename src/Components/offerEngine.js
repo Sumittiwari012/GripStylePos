@@ -10,30 +10,46 @@ const SPLIT_MODE = { [FLAT]: 'highest', [PERCENT]: 'highest', [BUNDLE]: 'equal' 
 const unitPrice = (item) => Number(item.originalPrice ?? item.price) || 0;
 const sum = (units) => units.reduce((t, u) => t + u.price, 0);
 
-// ── pool: one "unit" per physical piece, grouped by sub-category ──
+// Which pool a slot draws from:
+//   normal slot -> its sub-category id
+//   group slot  -> that custom group (a slot's subCategoryId is IGNORED when isGroup is true,
+//                  otherwise every product in the sub-category would match)
+const slotKey = (s) => (s.isGroup ? `g:${s.tempGroupId}` : s.subCategoryId);
+
+// ── pool: one "unit" per physical piece, filed under its sub-category AND under
+//    every custom group its barcode belongs to (item.groupIds). The same unit object
+//    sits in every pool it belongs to, so using it through one slot marks it used everywhere. ──
 const buildPool = (cart) => {
   const pool = {};
   cart.forEach((item) => {
     const sc = item.subCategoryId;
+    const groupIds = item.groupIds ?? [];
     for (let i = 0; i < item.quantity; i++) {
       const unit = { item, price: unitPrice(item), used: false };
       if (sc != null) (pool[sc] ??= []).push(unit);
+      groupIds.forEach((g) => (pool[`g:${g}`] ??= []).push(unit));
       (pool.__all ??= []).push(unit);
     }
   });
   return pool;
 };
 
-const free = (pool, sc) => (pool[sc] ?? []).filter((u) => !u.used);
+const free = (pool, key) => (pool[key] ?? []).filter((u) => !u.used);
 
 const takeSlots = (slots, pool, order) => {
   const units = [], missing = [];
+  const taken = new Set(); // a unit can only fill one slot of the same offer
   (slots ?? []).forEach((s) => {
-    const avail = free(pool, s.subCategoryId).sort((a, b) =>
-      order === 'desc' ? b.price - a.price : a.price - b.price
-    );
-    if (avail.length >= s.qty) units.push(...avail.slice(0, s.qty));
-    else missing.push({ ...s, short: s.qty - avail.length });
+    const avail = free(pool, slotKey(s))
+      .filter((u) => !taken.has(u))
+      .sort((a, b) => (order === 'desc' ? b.price - a.price : a.price - b.price));
+    if (avail.length >= s.qty) {
+      const pick = avail.slice(0, s.qty);
+      pick.forEach((u) => taken.add(u));
+      units.push(...pick);
+    } else {
+      missing.push({ ...s, short: s.qty - avail.length });
+    }
   });
   return { units, missing };
 };
@@ -115,6 +131,7 @@ const describeBenefit = (o) => {
   }
 };
 
+// For a group slot the API puts the group's name in subCategoryName.
 const fmtMissing = (missing) =>
   missing.map((m) => `${m.short} more ${m.subCategoryName ?? 'item'}`).join(', ');
 
@@ -122,7 +139,7 @@ const buildReminders = (offers, pool) => {
   const reminders = [];
   offers.forEach((o) => {
     const slots = [...(o.buySlots ?? []), ...(o.getSlots ?? [])];
-    if (!slots.some((s) => free(pool, s.subCategoryId).length > 0)) return;
+    if (!slots.some((s) => free(pool, slotKey(s)).length > 0)) return;
 
     const buy = takeSlots(o.buySlots, pool, 'desc');
     let phase = null, missing = [];
@@ -139,7 +156,7 @@ const buildReminders = (offers, pool) => {
     if (!phase) return;
 
     reminders.push({
-      id: `${o.id}-${phase}-${missing.map((m) => `${m.subCategoryId}:${m.short}`).join(',')}`,
+      id: `${o.id}-${phase}-${missing.map((m) => `${slotKey(m)}:${m.short}`).join(',')}`,
       offer: o,
       phase,
       missing,
@@ -269,11 +286,16 @@ export const applyCoupon = (lines, coupon) => {
   return { lines: out, overriddenOfferIds: [...overridden] };
 };
 
-// Search dropdown tag: which live offers include this product's sub-category?
+// Search dropdown tag: which live offers include this product?
+// A group slot counts only if the product's barcode is in that group (product.groupIds);
+// a normal slot counts by sub-category.
 export const offersForProduct = (product, offers) => {
   const sc = product.subCategoryId ?? product.SubCategoryId;
-  if (sc == null) return [];
+  const groupIds = product.groupIds ?? [];
+  if (sc == null && groupIds.length === 0) return [];
   return offers.filter((o) =>
-    [...(o.buySlots ?? []), ...(o.getSlots ?? [])].some((s) => s.subCategoryId === sc)
+    [...(o.buySlots ?? []), ...(o.getSlots ?? [])].some((s) =>
+      s.isGroup ? groupIds.includes(s.tempGroupId) : sc != null && s.subCategoryId === sc
+    )
   );
 };

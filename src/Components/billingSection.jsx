@@ -139,31 +139,38 @@ function BillingSection({ products = [], cart = [], setCart }) {
     })();
   }, []);
 
-  // Barcode -> subCategoryId lookup from the official API. Offers are tied to
-  // sub-categories, and the POS products API may not return them, so this
-  // fills the gap for items added from ANY place (grid or search box).
-  const [subCatByBarcode, setSubCatByBarcode] = useState({});
+  // Barcode -> { subCategoryId, groupIds } from the official API (api/MOffer/product-memberships).
+  // Offers are tied to sub-categories AND to custom groups (temp groups). The POS products API
+  // may return neither, so this fills the gap for items added from ANY place (grid or search box).
+  // groupIds lists the ACTIVE groups the barcode belongs to; the offer engine uses it so a
+  // group slot matches only the barcodes inside that group, not the whole sub-category.
+  const [membershipByBarcode, setMembershipByBarcode] = useState({});
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${OFFER_API_BASE_URL}/api/MOffer/product-subcategories`);
+        const res = await fetch(`${OFFER_API_BASE_URL}/api/MOffer/product-memberships`);
         if (!res.ok) return;
         const rows = await res.json();
         const map = {};
         rows.forEach((r) => {
           const bc = r.barcode ?? r.Barcode;
-          const sc = r.subCategoryId ?? r.SubCategoryId;
-          if (bc != null && sc != null) map[String(bc).trim()] = sc;
+          if (bc == null) return;
+          map[String(bc).trim()] = {
+            subCategoryId: r.subCategoryId ?? r.SubCategoryId ?? null,
+            groupIds: r.groupIds ?? r.GroupIds ?? []
+          };
         });
-        setSubCatByBarcode(map);
+        setMembershipByBarcode(map);
       } catch (e) {
-        console.error('Failed to load barcode->subcategory map (offers may not match)', e);
+        console.error('Failed to load product memberships (offers may not match)', e);
       }
     })();
   }, []);
 
+  const membershipOf = (p) => membershipByBarcode[String(p?.barcode ?? '').trim()];
   const resolveSubCat = (p) =>
-    p.subCategoryId ?? p.SubCategoryId ?? subCatByBarcode[String(p.barcode ?? '').trim()] ?? null;
+    p.subCategoryId ?? p.SubCategoryId ?? membershipOf(p)?.subCategoryId ?? null;
+  const resolveGroupIds = (p) => membershipOf(p)?.groupIds ?? [];
 
   // Cart with subCategoryId guaranteed where it can be resolved
   // Resolution order for a cart item: its own field -> the product list entry
@@ -173,12 +180,14 @@ function BillingSection({ products = [], cart = [], setCart }) {
   const enrichedCart = useMemo(
     () =>
       cart.map((i) => {
-        if (i.subCategoryId != null) return i;
         const src = productById.get(i.id);
-        return { ...i, subCategoryId: (src ? resolveSubCat(src) : null) ?? resolveSubCat(i) };
+        const subCategoryId = i.subCategoryId ?? (src ? resolveSubCat(src) : null) ?? resolveSubCat(i);
+        // groupIds: which custom groups this barcode is in (used for group offer slots)
+        const groupIds = resolveGroupIds(i.barcode != null ? i : src ?? i);
+        return { ...i, subCategoryId, groupIds };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cart, productById, subCatByBarcode]
+    [cart, productById, membershipByBarcode]
   );
 
   const prevCartLengthRef = useRef(cart.length);
@@ -708,7 +717,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
                   {isOutOfStock(product) && (
                     <span style={{ color: '#dc3545', fontSize: '0.75rem' }}>Out of stock</span>
                   )}
-                  {offersForProduct({ ...product, subCategoryId: resolveSubCat(product) }, offers).map((o) => (
+                  {offersForProduct({ ...product, subCategoryId: resolveSubCat(product), groupIds: resolveGroupIds(product) }, offers).map((o) => (
                     <span key={o.id} className="bs-offer-badge">🏷 {o.name}</span>
                   ))}
                 </div>
