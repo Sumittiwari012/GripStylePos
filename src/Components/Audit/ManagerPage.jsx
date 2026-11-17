@@ -74,7 +74,7 @@ export default function ManagerPage() {
         method: "POST",
         body: { barcode: scannedCode, physicalQty: Number(foundQty), note: foundNote.trim() || null },
       });
-      notify(`${r.productName}: found ${qty(r.physicalQty)} (sold out in system)`);
+      notify(`${r.productName}: found ${qty(r.physicalQty)} in shop`);
       next(); refresh();
     } catch (e) { setFoundErr(e); } finally { setBusy(false); }
   };
@@ -132,7 +132,9 @@ export default function ManagerPage() {
           {scanErr?.data?.canRecordFoundStock && (
             <div className="au-product">
               <h3>Product is physically in the shop?</h3>
-              <p className="au-muted">The system shows it as sold out. Record what you found and say why.</p>
+              <p className="au-muted">
+                The system shows {scanErr.data.remainingQty < 0 ? `negative stock (${qty(scanErr.data.remainingQty)})` : "it as sold out"}. Record what you found and say why.
+              </p>
               <Field label="Quantity found">
                 <input
                   className="au-input"
