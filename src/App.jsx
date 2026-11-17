@@ -1,5 +1,3 @@
-
-
 import './App.css'
 import Pdtsection from './Components/pdtsection'
 import { Routes, Route } from "react-router-dom";
@@ -13,23 +11,24 @@ import WhatsAppCampaignManager from './Components/WhatsAppCampaignManager';
 import InboxPage from './Components/mfwp/InboxPage';
 import MyChatsPage from './Components/mfwp/MyChatsPage';
 import AdminPage from './Components/mfwp/AdminPage';
+import { auditRoutes } from './Components/audit/routes';   // ← new
 
 function App() {
-  
   return (
     <Routes>
-            <Route path="/" element={<Pdtsection />} />
-            <Route path="/accounts" element={<Accounts />} />
-            <Route path="/offers" element={<Offers />} />
-            <Route path="/offers/coupon" element={<CouponVoucher/>}/>
-            <Route path="/offers/product" element={<ProductDiscounts/>}/>
-            <Route path="/Sales" element={<CategorySalesDashboard />} />
-            <Route path="/whatsappcampaign" element={<WhatsAppCampaignManager />} />
-            <Route path="/inbox" element={<InboxPage />} />
-<Route path="/minewp" element={<MyChatsPage />} />
-<Route path="/adminwp" element={<AdminPage />} />
-            
-        </Routes>
+      <Route path="/" element={<Pdtsection />} />
+      <Route path="/accounts" element={<Accounts />} />
+      <Route path="/offers" element={<Offers />} />
+      <Route path="/offers/coupon" element={<CouponVoucher/>}/>
+      <Route path="/offers/product" element={<ProductDiscounts/>}/>
+      <Route path="/Sales" element={<CategorySalesDashboard />} />
+      <Route path="/whatsappcampaign" element={<WhatsAppCampaignManager />} />
+      <Route path="/inbox" element={<InboxPage />} />
+      <Route path="/minewp" element={<MyChatsPage />} />
+      <Route path="/adminwp" element={<AdminPage />} />
+
+      {auditRoutes}   {/* ← new: all 7 audit routes */}
+    </Routes>
   )
 }
 
