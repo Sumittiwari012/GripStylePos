@@ -17,6 +17,12 @@ export default function ManagerPage() {
   const [submitOpen, setSubmitOpen] = useState(false);
   const inputRef = useRef(null);
 
+  // Sold out in the system but physically present in the shop
+  const [scannedCode, setScannedCode] = useState("");
+  const [foundQty, setFoundQty] = useState("");
+  const [foundNote, setFoundNote] = useState("");
+  const [foundErr, setFoundErr] = useState(null);
+
   const lists = useLoad(() => api(`/${auditId}/items?status=${listTab}&pageSize=100`), [auditId, listTab]);
 
   const status = progress.data?.status;
@@ -25,12 +31,17 @@ export default function ManagerPage() {
   const mine = progress.data?.mine;
 
   const refresh = () => { progress.reload(); lists.reload(); };
-  const next = () => { setItem(null); setBarcode(""); setHoldNote(""); setTimeout(() => inputRef.current?.focus(), 50); };
+  const next = () => {
+    setItem(null); setBarcode(""); setHoldNote("");
+    setScanErr(null); setFoundQty(""); setFoundNote(""); setFoundErr(null);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
 
   const scan = async (code) => {
     const c = (code ?? barcode).trim();
     if (!c) return;
-    setBusy(true); setScanErr(null); setItem(null);
+    setBusy(true); setScanErr(null); setItem(null); setFoundErr(null);
+    setScannedCode(c);
     try {
       setItem(await api(`/${auditId}/scan/${encodeURIComponent(c)}`));
     } catch (e) {
@@ -54,6 +65,18 @@ export default function ManagerPage() {
       notify("Put on hold");
       next(); refresh();
     } catch (e) { setScanErr(e); } finally { setBusy(false); }
+  };
+
+  const recordFound = async () => {
+    setBusy(true); setFoundErr(null);
+    try {
+      const r = await api(`/${auditId}/sold-out-found`, {
+        method: "POST",
+        body: { barcode: scannedCode, physicalQty: Number(foundQty), note: foundNote.trim() || null },
+      });
+      notify(`${r.productName}: found ${qty(r.physicalQty)} (sold out in system)`);
+      next(); refresh();
+    } catch (e) { setFoundErr(e); } finally { setBusy(false); }
   };
 
   return (
@@ -104,6 +127,42 @@ export default function ManagerPage() {
             <p className="au-muted">
               {scanErr.data.productName}: purchased {qty(scanErr.data.purchasedQty)}, returned to supplier {qty(scanErr.data.purchaseReturnedQty)}, sold {qty(scanErr.data.soldQty)}, remaining {qty(scanErr.data.remainingQty)}.
             </p>
+          )}
+
+          {scanErr?.data?.canRecordFoundStock && (
+            <div className="au-product">
+              <h3>Product is physically in the shop?</h3>
+              <p className="au-muted">The system shows it as sold out. Record what you found and say why.</p>
+              <Field label="Quantity found">
+                <input
+                  className="au-input"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="any"
+                  value={foundQty}
+                  onChange={(e) => setFoundQty(e.target.value)}
+                />
+              </Field>
+              <Field label="Note (required)">
+                <textarea
+                  className="au-input"
+                  rows={2}
+                  maxLength={500}
+                  placeholder="e.g. Found on back shelf, purchase not entered"
+                  value={foundNote}
+                  onChange={(e) => setFoundNote(e.target.value)}
+                />
+              </Field>
+              <ErrorBox error={foundErr} />
+              <button
+                className="au-btn au-btn-primary"
+                disabled={busy || !(Number(foundQty) > 0) || !foundNote.trim()}
+                onClick={recordFound}
+              >
+                Save as found
+              </button>
+            </div>
           )}
 
           {item && (
