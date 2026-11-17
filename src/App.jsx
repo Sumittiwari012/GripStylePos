@@ -11,7 +11,7 @@ import WhatsAppCampaignManager from './Components/WhatsAppCampaignManager';
 import InboxPage from './Components/mfwp/InboxPage';
 import MyChatsPage from './Components/mfwp/MyChatsPage';
 import AdminPage from './Components/mfwp/AdminPage';
-import { auditRoutes } from './Components/audit';   // ← new
+import { auditRoutes } from "./Components/Audit/routes";
 
 function App() {
   return (
