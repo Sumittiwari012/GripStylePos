@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, ROUTE_BASE, session } from "./api";
 import { ErrorBox, Field } from "./ui";
 
@@ -100,6 +100,7 @@ export default function MemberLogin() {
           </form>
         )}
         <ErrorBox error={error} />
+        <p className="au-muted au-switch">Are you the owner? <Link to={`${ROUTE_BASE}/owner-login`}>Log in as owner</Link></p>
       </div>
     </div>
   );

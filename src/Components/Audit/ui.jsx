@@ -51,7 +51,7 @@ export async function withForce(run) {
 }
 
 // ── layout ──
-export function Shell({ title, subtitle, actions, member, children, back }) {
+export function Shell({ title, subtitle, actions, member, owner, children, back }) {
   const nav = useNavigate();
   const logout = async () => {
     try {
@@ -60,16 +60,16 @@ export function Shell({ title, subtitle, actions, member, children, back }) {
       /* ignore */
     }
     session.clear();
-    nav(`${ROUTE_BASE}/login`);
+    nav(`${ROUTE_BASE}/${owner ? "owner-login" : "login"}`);
   };
   return (
     <div className="au">
       <header className="au-top">
         <div className="au-brand">Stock audit</div>
-        {member && (
+        {(member || owner) && (
           <div className="au-who">
             <span>
-              {member.personName} · {member.roleId === 2 ? "Incharge" : "Manager"}
+              {member ? `${member.personName} · ${member.roleId === 2 ? "Incharge" : "Manager"}` : `${owner.ownerName} · Owner`}
             </span>
             <button className="au-btn au-btn-ghost au-btn-sm" onClick={logout}>
               Log out

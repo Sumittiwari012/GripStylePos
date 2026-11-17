@@ -1,12 +1,11 @@
 // ─────────────────────────────────────────────────────────────
 // Audit API client.
-//  • Owner calls  -> your existing login token  (Authorization: Bearer ...)
-//  • Incharge / manager calls -> OTP session     (X-Audit-Session: ...)
-// Edit the three settings below to match your project.
+// Owner, incharge and manager all log in with a WhatsApp OTP and send the
+// returned token as the X-Audit-Session header.
+// Edit the two settings below to match your project.
 // ─────────────────────────────────────────────────────────────
 export const API_BASE = "https://gripstyleapi.runasp.net"; // your backend URL, no trailing slash
 export const ROUTE_BASE = "/audit"; // where you mount these pages in your router
-export const getOwnerToken = () => localStorage.getItem("token"); // where your owner login keeps its JWT
 
 const SESSION_KEY = "auditSession";
 
@@ -45,18 +44,13 @@ function readMessage(data) {
 }
 
 /**
- * api("/5/scan/123", { who: "member" })
- * who: "owner" | "member"  (member is the default)
+ * api("/5/scan/123")
+ * `who` is kept only so older calls keep working; it no longer changes the request.
  */
 export async function api(path, { method = "GET", body, who = "member" } = {}) {
   const headers = { "Content-Type": "application/json" };
-  if (who === "owner") {
-    const t = getOwnerToken();
-    if (t) headers.Authorization = `Bearer ${t}`;
-  } else {
-    const s = session.get();
-    if (s?.token) headers["X-Audit-Session"] = s.token;
-  }
+  const current = session.get();
+  if (current?.token) headers["X-Audit-Session"] = current.token;
 
   let res;
   try {
@@ -80,9 +74,12 @@ export async function api(path, { method = "GET", body, who = "member" } = {}) {
   }
 
   if (!res.ok) {
-    if (res.status === 401 && who === "member") {
+    // Session expired -> back to the right login page.
+    // (Not for /auth/ calls: a wrong OTP is also a 401 and must show its message.)
+    if (res.status === 401 && !path.startsWith("/auth/")) {
+      const wasOwner = !!current?.owner || who === "owner";
       session.clear();
-      window.location.assign(`${ROUTE_BASE}/login`);
+      window.location.assign(`${ROUTE_BASE}/${wasOwner ? "owner-login" : "login"}`);
     }
     throw new ApiError(res.status, readMessage(data), data);
   }

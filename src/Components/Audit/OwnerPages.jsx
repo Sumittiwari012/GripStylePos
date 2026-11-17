@@ -1,52 +1,20 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, fmtDate, ROUTE_BASE } from "./api";
+import { api, fmtDate, ROUTE_BASE, session } from "./api";
 import { ApprovalTag, Badge, Card, ErrorBox, Field, Loading, Shell, useLoad, useToast } from "./ui";
 import { ItemsPanel, MonitoringPanel, TeamPanel } from "./Panels";
 
 const who = "owner";
 
-// ═════════════ Owner home: profile + create + list ═════════════
+// ═════════════ Owner home: create + list ═════════════
 export function OwnerHome() {
-  const me = useLoad(async () => {
-    try {
-      return await api("/owners/me", { who });
-    } catch (e) {
-      if (e.status === 404) return null; // no profile yet
-      throw e;
-    }
-  });
+  // /auth/owner/me also checks that the OTP session is still valid
+  const me = useLoad(async () => (await api("/auth/owner/me", { who })).owner);
+  const saved = session.get()?.owner;
 
-  if (me.loading && me.data === null && !me.error) return <Shell title="Audits"><Loading /></Shell>;
-  if (me.error) return <Shell title="Audits"><ErrorBox error={me.error} onRetry={me.reload} /></Shell>;
-  if (!me.data) return <OwnerSetup onDone={me.reload} />;
+  if (me.loading && !me.data) return <Shell title="Audits" owner={saved}><Loading /></Shell>;
+  if (me.error) return <Shell title="Audits" owner={saved}><ErrorBox error={me.error} onRetry={me.reload} /></Shell>;
   return <OwnerAudits owner={me.data} />;
-}
-
-function OwnerSetup({ onDone }) {
-  const [form, setForm] = useState({ ownerName: "", phoneNumber: "" });
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
-  const submit = async (e) => {
-    e.preventDefault();
-    setBusy(true); setErr(null);
-    try {
-      await api("/owners", { method: "POST", who, body: form });
-      onDone();
-    } catch (x) { setErr(x); } finally { setBusy(false); }
-  };
-  return (
-    <Shell title="Set up your owner profile" subtitle="Add your details once. Every audit you create is linked to this profile.">
-      <Card>
-        <form className="au-form au-narrow" onSubmit={submit}>
-          <Field label="Your name"><input className="au-input" value={form.ownerName} maxLength={100} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} required /></Field>
-          <Field label="Phone number" hint="Use the number you log in with."><input className="au-input" type="tel" inputMode="numeric" value={form.phoneNumber} onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })} required /></Field>
-          <ErrorBox error={err} />
-          <button className="au-btn au-btn-primary" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button>
-        </form>
-      </Card>
-    </Shell>
-  );
 }
 
 function OwnerAudits({ owner }) {
@@ -70,6 +38,7 @@ function OwnerAudits({ owner }) {
   return (
     <Shell
       title="Audits"
+      owner={owner}
       subtitle={`Signed in as ${owner.ownerName}`}
       actions={<button className="au-btn au-btn-primary" onClick={() => setShow(!show)}>{show ? "Cancel" : "New audit"}</button>}
     >
@@ -117,6 +86,7 @@ function OwnerAudits({ owner }) {
 // ═════════════ Owner: one audit ═════════════
 export function OwnerAudit() {
   const { auditId } = useParams();
+  const owner = session.get()?.owner;
   const { data, error, loading, reload } = useLoad(() => api(`/${auditId}`, { who }), [auditId]);
   const [tab, setTab] = useState("overview");
   const [toast, notify] = useToast();
@@ -134,8 +104,8 @@ export function OwnerAudit() {
     } catch (e) { setActErr(e); } finally { setBusy(""); }
   };
 
-  if (loading && !data) return <Shell title="Audit" back={{ to: `${ROUTE_BASE}/owner`, label: "All audits" }}><Loading /></Shell>;
-  if (error) return <Shell title="Audit" back={{ to: `${ROUTE_BASE}/owner`, label: "All audits" }}><ErrorBox error={error} onRetry={reload} /></Shell>;
+  if (loading && !data) return <Shell title="Audit" owner={owner} back={{ to: `${ROUTE_BASE}/owner`, label: "All audits" }}><Loading /></Shell>;
+  if (error) return <Shell title="Audit" owner={owner} back={{ to: `${ROUTE_BASE}/owner`, label: "All audits" }}><ErrorBox error={error} onRetry={reload} /></Shell>;
 
   const a = data.audit;
   const started = a.status !== "Draft";
@@ -154,6 +124,7 @@ export function OwnerAudit() {
   return (
     <Shell
       title={a.auditName}
+      owner={owner}
       subtitle={`${a.auditType} audit · started ${fmtDate(a.startDate)}`}
       back={{ to: `${ROUTE_BASE}/owner`, label: "All audits" }}
       actions={actions}

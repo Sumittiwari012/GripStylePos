@@ -135,3 +135,6 @@
   .au { background: #fff; } .au-card { break-inside: avoid; }
 }
 @media (prefers-reduced-motion: no-preference) { .au-btn { transition: background .12s; } }
+
+.au-switch { margin-top: 1.25rem !important; font-size: .9rem; }
+.au-switch a { color: var(--brand); font-weight: 600; }

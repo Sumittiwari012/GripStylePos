@@ -8,7 +8,7 @@ import { useLoad } from "./ui";
 // Incharge route: /audit/incharge/report  (audit comes from the login session)
 export default function ReportPage({ who }) {
   const params = useParams();
-  const s = who === "member" ? session.get() : null;
+  const s = session.get();
   const auditId = who === "owner" ? params.auditId : s.audit.id;
   const back = who === "owner" ? { to: `${ROUTE_BASE}/owner/${auditId}`, label: "Audit" } : { to: `${ROUTE_BASE}/incharge`, label: "Audit" };
 
@@ -20,6 +20,7 @@ export default function ReportPage({ who }) {
       title={r ? `Report: ${r.auditName}` : "Report"}
       subtitle={r ? `Code ${r.auditCode} · generated ${fmtDate(r.generatedAt)}` : undefined}
       member={s?.member}
+      owner={s?.owner}
       back={back}
       actions={
         <>
