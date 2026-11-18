@@ -5,6 +5,7 @@ import OwnerLogin from "./OwnerLogin";
 import { OwnerAudit, OwnerHome } from "./OwnerPages";
 import InchargePage from "./InchargePage";
 import ManagerPage from "./ManagerPage";
+import SubordinatePage from "./SubordinatePage";
 import ReportPage from "./ReportPage";
 
 // Sends people without an OTP session (or with the wrong role) to the right login page.
@@ -33,5 +34,6 @@ export const auditRoutes = (
     <Route path={`${ROUTE_BASE}/incharge/report`} element={<RequireMember roleId={2}><ReportPage who="member" /></RequireMember>} />
 
     <Route path={`${ROUTE_BASE}/manager`} element={<RequireMember roleId={3}><ManagerPage /></RequireMember>} />
+    <Route path={`${ROUTE_BASE}/subordinate`} element={<RequireMember roleId={4}><SubordinatePage /></RequireMember>} />
   </>
 );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, session } from "./api";
 import { Bar, Card, ErrorBox, Field, Modal, Shell, Stat, useLoad, useToast, withForce } from "./ui";
 import { StatusTree } from "./StatusTree";
+import { SubordinatesPanel } from "./ManagerSubordinates";
 
 export default function ManagerPage() {
   const s = session.get();
@@ -10,6 +11,11 @@ export default function ManagerPage() {
   const [toast, notify] = useToast();
   const [submitOpen, setSubmitOpen] = useState(false);
   const [tick, setTick] = useState(0);
+  const [tab, setTab] = useState("count"); // count | subs
+
+  // my subordinates (also used for the "awaiting review" number on the tab)
+  const subs = useLoad(() => api(`/${auditId}/subordinates`), [auditId, tick]);
+  const awaiting = (subs.data || []).reduce((n, x) => n + x.awaitingReview, 0);
 
   const status = progress.data?.status;
   const counting = status === "InProgress";
@@ -19,7 +25,7 @@ export default function ManagerPage() {
   const refresh = () => { progress.reload(); setTick((t) => t + 1); };
 
   return (
-    <Shell title={s.audit.auditName} subtitle="Open a category, pick a barcode, count it." member={s.member}>
+    <Shell title={s.audit.auditName} subtitle="Open a category, pick a barcode, count it. Review what your subordinates send." member={s.member}>
       {toast}
 
       {status && !counting && (
@@ -46,14 +52,28 @@ export default function ManagerPage() {
         </Card>
       )}
 
-      <StatusTree role="manager" auditId={auditId} canAct={counting} refreshKey={tick} onChanged={() => progress.reload()} />
+      <nav className="au-tabs" role="tablist">
+        <button role="tab" aria-selected={tab === "count"} className={tab === "count" ? "on" : ""} onClick={() => setTab("count")}>Counting</button>
+        <button role="tab" aria-selected={tab === "subs"} className={tab === "subs" ? "on" : ""} onClick={() => setTab("subs")}>
+          Subordinates{awaiting > 0 && <span className="au-chip">{awaiting} to review</span>}
+        </button>
+      </nav>
 
-      {counting && (
-        <Card title="Finished counting?">
-          <p className="au-muted">Submitting closes counting and sends the report to the incharge for approval.</p>
-          <button className="au-btn au-btn-primary" onClick={() => setSubmitOpen(true)}>Submit report to incharge</button>
-        </Card>
-      )}
+      {/* both tabs stay mounted so opened categories are not lost when you switch */}
+      <div style={{ display: tab === "count" ? "block" : "none" }}>
+        <StatusTree role="manager" auditId={auditId} canAct={counting} refreshKey={tick} onChanged={() => progress.reload()} />
+
+        {counting && (
+          <Card title="Finished counting?">
+            <p className="au-muted">Submitting closes counting and sends the report to the incharge for approval.</p>
+            <button className="au-btn au-btn-primary" onClick={() => setSubmitOpen(true)}>Submit report to incharge</button>
+          </Card>
+        )}
+      </div>
+
+      <div style={{ display: tab === "subs" ? "block" : "none" }}>
+        <SubordinatesPanel auditId={auditId} subs={subs} canAct={counting} refreshKey={tick} onChanged={refresh} />
+      </div>
 
       {submitOpen && <SubmitDialog auditId={auditId} onClose={() => setSubmitOpen(false)} onDone={(msg) => { setSubmitOpen(false); notify(msg); refresh(); }} />}
     </Shell>

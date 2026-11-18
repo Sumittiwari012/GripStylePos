@@ -106,4 +106,5 @@ export default function MemberLogin() {
   );
 }
 
-export const homeFor = (roleId) => (roleId === 2 ? `${ROUTE_BASE}/incharge` : `${ROUTE_BASE}/manager`);
+export const homeFor = (roleId) =>
+  roleId === 2 ? `${ROUTE_BASE}/incharge` : roleId === 4 ? `${ROUTE_BASE}/subordinate` : `${ROUTE_BASE}/manager`;

@@ -94,4 +94,5 @@ export const fmtDate = (d) =>
   d ? new Date(d).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "–";
 
 export const REASONS = ["Damaged", "Returned", "Lost", "WrongBilling", "FoundExtra", "Other"];
-export const ROLE = { INCHARGE: 2, MANAGER: 3 };
+export const ROLE = { INCHARGE: 2, MANAGER: 3, SUBORDINATE: 4 };
+export const ROLE_LABEL = { 2: "Incharge", 3: "Manager", 4: "Subordinate" };

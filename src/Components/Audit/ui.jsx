@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, fmtDate, qty, REASONS, ROUTE_BASE, session } from "./api";
+import { api, fmtDate, qty, REASONS, ROLE_LABEL, ROUTE_BASE, session } from "./api";
 import "./audit.css";
 
 // ── data loading ──
@@ -69,7 +69,7 @@ export function Shell({ title, subtitle, actions, member, owner, children, back 
         {(member || owner) && (
           <div className="au-who">
             <span>
-              {member ? `${member.personName} · ${member.roleId === 2 ? "Incharge" : "Manager"}` : `${owner.ownerName} · Owner`}
+              {member ? `${member.personName} · ${ROLE_LABEL[member.roleId] || "Member"}` : `${owner.ownerName} · Owner`}
             </span>
             <button className="au-btn au-btn-ghost au-btn-sm" onClick={logout}>
               Log out
@@ -111,6 +111,10 @@ export function Card({ title, right, children, className = "" }) {
 }
 
 export const Badge = ({ status }) => <span className={`au-badge au-s-${status}`}>{status}</span>;
+
+// state of a subordinate's count: AwaitingReview | Accepted | Rejected
+const REVIEW_LABEL = { AwaitingReview: "Awaiting review", Accepted: "Accepted", Rejected: "Rejected" };
+export const ReviewBadge = ({ state }) => <span className={`au-badge au-s-${state}`}>{REVIEW_LABEL[state] || state}</span>;
 
 export const Stat = ({ label, value, tone }) => (
   <div className={`au-stat ${tone ? `au-t-${tone}` : ""}`}>

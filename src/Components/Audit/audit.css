@@ -143,3 +143,13 @@
 .au-chip { display: inline-block; margin-left: .6rem; padding: .05rem .5rem; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); font-size: .78rem; font-weight: 500; color: var(--muted); }
 .au-group > summary { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
 .au-subgroup h3 { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+
+/* subordinate role */
+.au-s-AwaitingReview { color: var(--hold); }
+.au-s-Accepted { color: var(--ok); }
+.au-s-Rejected { color: var(--short); }
+.au-checklist { display: flex; flex-direction: column; gap: .1rem; max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: .3rem .6rem; margin-bottom: .8rem; }
+.au-checklist .au-check { padding: .4rem 0; border-bottom: 1px solid var(--line); }
+.au-checklist .au-check:last-child { border-bottom: 0; }
+.au-checklist .au-chip { margin-left: auto; }
+.au-tabs button .au-chip { margin-left: .4rem; }
