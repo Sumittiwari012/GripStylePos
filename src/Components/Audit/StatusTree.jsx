@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, qty } from "./api";
-import { Badge, BarcodeInput, ScanButton, CountForm, Card, ErrorBox, Field, Loading, Modal, Stat, useLoad, useToast } from "./ui";
+import { Badge, BarcodeInput, FindBar, CountForm, Card, ErrorBox, Field, Loading, Modal, Stat, useLoad, useToast } from "./ui";
 import { HistoryDialog, LogDialog } from "./Panels";
 
 // Pending / Completed categories. A category sits in Pending until EVERY barcode in it
@@ -41,13 +41,9 @@ export function StatusTree({ role, auditId, canAct = false, refreshKey, onChange
   const list = data?.[section] ?? [];
 
   return (
-    <Card title="Products" right={
-      <div className="au-row">
-        <ScanButton onScan={locate} />
-        <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => { setVer((v) => v + 1); summary.reload(); }}>Refresh</button>
-      </div>
-    }>
+    <Card title="Products" right={<button className="au-btn au-btn-ghost au-btn-sm" onClick={() => { setVer((v) => v + 1); summary.reload(); }}>Refresh</button>}>
       {toast}
+      <FindBar onFind={locate} />
       <ErrorBox error={summary.error} onRetry={summary.reload} />
       {summary.loading && !data ? <Loading /> : data && (
         <>

@@ -422,3 +422,38 @@ export function ScanButton({ onScan, children = "Scan to find", className = "au-
     </>
   );
 }
+
+// Sticky "find a barcode" bar: type it (or use a USB scanner that presses Enter) or scan with the camera.
+// onFind(code) does the lookup.
+export function FindBar({ onFind, placeholder = "Type or scan a barcode to find it" }) {
+  const [code, setCode] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const submit = (e) => {
+    e.preventDefault();
+    const c = code.trim();
+    if (c) onFind(c);
+  };
+  return (
+    <div className="au-findbar">
+      <form className="au-scanrow" onSubmit={submit}>
+        <input
+          className="au-input"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder={placeholder}
+          aria-label="Barcode to find"
+          autoComplete="off"
+          enterKeyHint="search"
+        />
+        <button className="au-btn au-btn-primary" disabled={!code.trim()}>Find</button>
+        <button type="button" className="au-btn" onClick={() => setScanning(true)} aria-label="Scan barcode with camera">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ marginRight: 4 }}>
+            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M11 8v8M15 8v8M18 8v8" />
+          </svg>
+          Scan
+        </button>
+      </form>
+      {scanning && <ScanDialog onClose={() => setScanning(false)} onDetect={(c) => { setScanning(false); setCode(c); onFind(c); }} />}
+    </div>
+  );
+}

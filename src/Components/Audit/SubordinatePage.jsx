@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, qty, session } from "./api";
-import { Badge, BarcodeInput, ScanButton, Card, CountForm, ErrorBox, Loading, Modal, ReviewBadge, Shell, Stat, useLoad, useToast } from "./ui";
+import { Badge, BarcodeInput, FindBar, Card, CountForm, ErrorBox, Loading, Modal, ReviewBadge, Shell, Stat, useLoad, useToast } from "./ui";
 
 const isDone = (s) => s === "Matched" || s === "Short" || s === "Excess";
 
@@ -62,12 +62,8 @@ export default function SubordinatePage() {
         </div>
       )}
 
-      <Card title="Your categories" right={
-        <div className="au-row">
-          <ScanButton onScan={locate} />
-          <button className="au-btn au-btn-ghost au-btn-sm" onClick={refresh}>Refresh</button>
-        </div>
-      }>
+      <Card title="Your categories" right={<button className="au-btn au-btn-ghost au-btn-sm" onClick={refresh}>Refresh</button>}>
+        {data && data.assignedCount > 0 && <FindBar onFind={locate} />}
         <ErrorBox error={cats.error} onRetry={cats.reload} />
         {cats.loading && !data ? <Loading /> : data && (
           data.assignedCount === 0 ? (

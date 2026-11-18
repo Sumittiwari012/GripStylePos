@@ -164,3 +164,9 @@
 /* row found by scanning */
 .au-table tr.au-row-hit td { background: #fff4cc; }
 .au-table tr.au-row-hit td:first-child { box-shadow: inset 4px 0 0 #f2b705; }
+
+/* floating find bar (stays at the top while the list scrolls) */
+.au-findbar { position: sticky; top: 0; z-index: 20; background: var(--card); padding: .6rem 0; margin-bottom: .5rem; border-bottom: 1px solid var(--line); }
+.au-findbar .au-input { flex: 1; min-width: 0; }
+.au-findbar .au-btn { min-height: 44px; }
+@media print { .au-findbar { display: none !important; } }
