@@ -88,8 +88,8 @@ export default function ReportPage({ who }) {
           </Card>
 
           <Section title="Audited products" groups={r.audited} audited />
-          <Section title="Negative stock (sold more than purchased)" note="These are data problems. Check the purchase and sales records." groups={r.negativeStock} />
-          <Section title="Sold out (not audited)" groups={r.soldOut} />
+          <Section title="Negative stock (sold more than purchased)" note="These are data problems. Check the purchase and sales records." groups={r.negativeStock} audited />
+          <Section title="Sold out in system" note="If a manager found any of these in the shop, the quantity and note are shown." groups={r.soldOut} audited />
         </>
       )}
     </Shell>
@@ -136,6 +136,9 @@ function Section({ title, note, groups, audited }) {
 function Line({ l, audited }) {
   const [open, setOpen] = useState(false);
   const cols = audited ? 10 : 5;
+  // sold out / negative lines nobody counted arrive with no status: treat them as Pending
+  const status = l.status || "Pending";
+  const counted = status !== "Pending";
   return (
     <>
       <tr>
@@ -150,9 +153,9 @@ function Line({ l, audited }) {
         <td className="au-num">{qty(l.systemQty)}</td>
         {audited && (
           <>
-            <td className="au-num">{l.status === "Pending" ? "–" : qty(l.physicalQty)}</td>
-            <td className={`au-num ${l.varianceQty < 0 && l.status !== "Pending" ? "au-neg" : l.varianceQty > 0 && l.status !== "Pending" ? "au-pos" : ""}`}>{l.status === "Pending" ? "–" : qty(l.varianceQty)}</td>
-            <td><Badge status={l.status} /></td>
+            <td className="au-num">{counted ? qty(l.physicalQty) : "–"}</td>
+            <td className={`au-num ${counted && l.varianceQty < 0 ? "au-neg" : counted && l.varianceQty > 0 ? "au-pos" : ""}`}>{counted ? qty(l.varianceQty) : "–"}</td>
+            <td><Badge status={status} /></td>
             <td className="au-note">{[l.reasonCode, l.note].filter(Boolean).join(" · ") || "–"}</td>
             <td>{l.verifiedBy || "–"}</td>
           </>
