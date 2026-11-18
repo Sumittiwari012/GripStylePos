@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ROUTE_BASE, session } from "./api";
 import { ApprovalTag, Badge, Card, ErrorBox, Loading, Modal, Field, Shell, useLoad, useToast, withForce } from "./ui";
-import { ItemsPanel, MonitoringPanel, TeamPanel } from "./Panels";
+import { MonitoringPanel, TeamPanel } from "./Panels";
+import { StatusTree } from "./StatusTree";
 
 export default function InchargePage() {
   const s = session.get();
@@ -73,7 +74,7 @@ export default function InchargePage() {
       </nav>
 
       {tab === "overview" && <MonitoringPanel who="member" auditId={auditId} refreshKey={tick} />}
-      {tab === "items" && <ItemsPanel who="member" auditId={auditId} canEdit={editable} onChanged={refresh} />}
+      {tab === "items" && <StatusTree role="incharge" auditId={auditId} canAct={editable} refreshKey={tick} onChanged={refresh} />}
       {tab === "team" && <TeamPanel who="member" auditId={auditId} auditStatus={a.status} isOwner={false} />}
 
       {dlg && (

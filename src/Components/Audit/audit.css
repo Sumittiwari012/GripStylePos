@@ -138,3 +138,8 @@
 
 .au-switch { margin-top: 1.25rem !important; font-size: .9rem; }
 .au-switch a { color: var(--brand); font-weight: 600; }
+
+/* append to audit.css */
+.au-chip { display: inline-block; margin-left: .6rem; padding: .05rem .5rem; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); font-size: .78rem; font-weight: 500; color: var(--muted); }
+.au-group > summary { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+.au-subgroup h3 { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }

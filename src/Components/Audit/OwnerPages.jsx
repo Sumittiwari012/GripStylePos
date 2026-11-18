@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, fmtDate, ROUTE_BASE, session } from "./api";
 import { ApprovalTag, Badge, Card, ErrorBox, Field, Loading, Shell, useLoad, useToast } from "./ui";
-import { ItemsPanel, MonitoringPanel, TeamPanel } from "./Panels";
+import { MonitoringPanel, TeamPanel } from "./Panels";
+import { StatusTree } from "./StatusTree";
 
 const who = "owner";
 
@@ -152,7 +153,7 @@ export function OwnerAudit() {
       </nav>
 
       {tab === "overview" && (started ? <MonitoringPanel who={who} auditId={auditId} refreshKey={tick} /> : <Card><p>Add an incharge and at least one manager in the Team tab, then start the audit. Progress appears here once counting begins.</p></Card>)}
-      {tab === "products" && started && <ItemsPanel who={who} auditId={auditId} canEdit={false} />}
+      {tab === "products" && started && <StatusTree role="owner" auditId={auditId} refreshKey={tick} />}
       {tab === "team" && <TeamPanel who={who} auditId={auditId} auditStatus={a.status} isOwner />}
     </Shell>
   );
