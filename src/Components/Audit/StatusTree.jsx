@@ -23,11 +23,24 @@ export function StatusTree({ role, auditId, canAct = false, refreshKey, onChange
     return () => clearTimeout(t);
   }, [focus]);
 
-  // scan -> ask the server where the barcode is -> open that category
+  // scan -> ask the server where the barcode is -> open that category.
+  // The category list is refreshed first, so the category is certain to be in it,
+  // and the tab (pending / completed) is chosen by where the category really appears.
   const locate = async (code) => {
     try {
       const r = await api(`/${auditId}/locate?barcode=${encodeURIComponent(code)}`, { who });
-      setSection(r.categoryComplete ? "completed" : "pending");
+      const fresh = await api(`/${auditId}/tree`, { who });
+      const inCompleted = fresh.completed.some((c) => c.categoryId === r.categoryId);
+      const inPending = fresh.pending.some((c) => c.categoryId === r.categoryId);
+
+      if (!inCompleted && !inPending) {
+        notify(`${r.productName} is in ${r.categoryName}, but that category is not in the list. Press Refresh.`, "err");
+        return;
+      }
+
+      setSection(inCompleted ? "completed" : "pending");
+      setVer((v) => v + 1);   // opened categories reload
+      summary.reload();       // category list reloads
       setFocus({ ...r, nonce: Date.now() });
       notify(`${r.productName}: ${r.categoryName} › ${r.subCategoryName}`);
     } catch (e) {

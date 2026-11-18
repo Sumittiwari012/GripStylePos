@@ -27,10 +27,22 @@ export default function SubordinatePage() {
   }, [focus]);
 
   // The server only finds barcodes in the categories assigned to this subordinate.
+  // The category list is refreshed first so the category is certain to be in it.
   const locate = async (code) => {
     try {
       const r = await api(`/${auditId}/locate?barcode=${encodeURIComponent(code)}`);
-      setSection(r.categoryComplete ? "completed" : "pending");
+      const fresh = await api(`/${auditId}/sub/categories`);
+      const inCompleted = fresh.completed.some((c) => c.categoryId === r.categoryId);
+      const inPending = fresh.pending.some((c) => c.categoryId === r.categoryId);
+
+      if (!inCompleted && !inPending) {
+        notify(`${r.productName} is in ${r.categoryName}, but that category is not in your list. Press Refresh.`, "err");
+        return;
+      }
+
+      setSection(inCompleted ? "completed" : "pending");
+      setVer((v) => v + 1);
+      cats.reload();
       setFocus({ ...r, nonce: Date.now() });
       notify(`${r.productName}: ${r.categoryName} › ${r.subCategoryName}`);
     } catch (e) {

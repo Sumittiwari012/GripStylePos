@@ -170,3 +170,6 @@
 .au-findbar .au-input { flex: 1; min-width: 0; }
 .au-findbar .au-btn { min-height: 44px; }
 @media print { .au-findbar { display: none !important; } }
+
+/* keep a scrolled-to row clear of the sticky find bar */
+.au-table tr[id^="au-row-"] { scroll-margin-top: 90px; }
