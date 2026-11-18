@@ -117,6 +117,7 @@ export function OwnerAudit() {
       {a.status === "Draft" && <button className="au-btn au-btn-primary" disabled={busy === "start"} onClick={() => act("start", "start", undefined, "Audit started", "Start the audit? The product list is built from current stock and cannot be rebuilt.")}>Start audit</button>}
       {inReview && !a.reportApproved && <button className="au-btn" disabled={busy === "reopen"} onClick={() => act("reopen", "reopen", { note: window.prompt("Note for the managers (optional)") || null }, "Audit reopened")}>Send back to managers</button>}
       {inReview && a.reportApproved && <button className="au-btn au-btn-primary" disabled={busy === "close"} onClick={() => act("close", "close", undefined, "Audit closed", "Close this audit? This cannot be undone.")}>Close audit</button>}
+      {a.status === "InProgress" && <button className="au-btn" disabled={busy === "sync"} onClick={() => act("sync", "sync-products", undefined, "Products synced", "Add every product that is missing from this audit? Counts already entered are not touched.")}>Add missing products</button>}
       {(a.status === "Draft" || a.status === "InProgress") && <button className="au-btn au-btn-danger" disabled={busy === "cancel"} onClick={() => act("cancel", "cancel", undefined, "Audit cancelled", "Cancel this audit? This cannot be undone.")}>Cancel audit</button>}
       {started && <Link className="au-btn" to={`${ROUTE_BASE}/owner/${a.id}/report`}>View report</Link>}
     </>
