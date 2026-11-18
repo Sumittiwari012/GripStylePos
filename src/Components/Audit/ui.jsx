@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fmtDate, qty, REASONS, ROLE_LABEL, ROUTE_BASE, session } from "./api";
 import "./audit.css";
@@ -290,5 +290,135 @@ export function HistoryTables({ history }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// ── barcode scanning with the phone / laptop camera ──
+// Uses the browser's built-in BarcodeDetector when there is one (Chrome, Edge, Android).
+// Otherwise (iPhone Safari, Firefox) it loads @zxing/browser on demand:  npm i @zxing/browser
+// Camera access needs https (or localhost).
+export function ScanDialog({ onDetect, onClose }) {
+  const videoRef = useRef(null);
+  const [err, setErr] = useState("");
+  const [starting, setStarting] = useState(true);
+
+  useEffect(() => {
+    let stopped = false;
+    let stream = null;
+    let timer = null;
+    let controls = null;
+
+    const found = (text) => {
+      if (stopped || !text) return;
+      stopped = true;
+      try { navigator.vibrate?.(60); } catch { /* ignore */ }
+      onDetect(String(text).trim());
+    };
+
+    const start = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setErr("This browser cannot open the camera here. Camera scanning needs a secure (https) page.");
+        setStarting(false);
+        return;
+      }
+      const constraints = { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false };
+      try {
+        if ("BarcodeDetector" in window) {
+          const detector = new window.BarcodeDetector();
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+          const v = videoRef.current;
+          v.srcObject = stream;
+          await v.play();
+          setStarting(false);
+          const tick = async () => {
+            if (stopped) return;
+            try {
+              const codes = await detector.detect(v);
+              if (codes.length) return found(codes[0].rawValue);
+            } catch { /* frame not ready, try again */ }
+            timer = setTimeout(tick, 200);
+          };
+          tick();
+        } else {
+          const { BrowserMultiFormatReader } = await import("@zxing/browser");
+          const reader = new BrowserMultiFormatReader(undefined, { delayBetweenScanAttempts: 200 });
+          controls = await reader.decodeFromConstraints(constraints, videoRef.current, (result) => {
+            if (result) found(result.getText());
+          });
+          if (stopped) controls.stop();
+          setStarting(false);
+        }
+      } catch (e) {
+        if (stopped) return;
+        setStarting(false);
+        setErr(
+          e?.name === "NotAllowedError" ? "Camera permission was denied. Allow camera access for this site in your browser settings, then try again."
+          : e?.name === "NotFoundError" ? "No camera was found on this device."
+          : "Could not start the camera. Close other apps that use it and try again."
+        );
+      }
+    };
+    start();
+
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      controls?.stop();
+      stream?.getTracks().forEach((t) => t.stop());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Modal title="Scan barcode" onClose={onClose}>
+      {err ? (
+        <div className="au-error" role="alert">{err}</div>
+      ) : (
+        <>
+          <div className="au-scanview">
+            <video ref={videoRef} muted playsInline />
+            <div className="au-scanframe" aria-hidden="true" />
+          </div>
+          <p className="au-muted">{starting ? "Starting the camera…" : "Hold the barcode inside the frame. It is picked up automatically."}</p>
+        </>
+      )}
+      <button className="au-btn" onClick={onClose}>Cancel</button>
+    </Modal>
+  );
+}
+
+// Text input + "Scan" button. Typing still works. A scan fills the box and calls onChange.
+export function BarcodeInput({ value, onChange, placeholder, label = "Filter", ...rest }) {
+  const [scanning, setScanning] = useState(false);
+  return (
+    <>
+      <div className="au-scanrow au-scanrow-sm">
+        <input className="au-input au-input-sm" style={{ flex: 1, minWidth: 0 }} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} {...rest} />
+        <button type="button" className="au-btn au-btn-sm" onClick={() => setScanning(true)} aria-label="Scan barcode with camera">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ marginRight: 4 }}>
+            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M11 8v8M15 8v8M18 8v8" />
+          </svg>
+          Scan
+        </button>
+      </div>
+      {scanning && <ScanDialog onClose={() => setScanning(false)} onDetect={(code) => { setScanning(false); onChange(code); }} />}
+    </>
+  );
+}
+
+// Button that opens the camera and hands the scanned code to onScan(code).
+export function ScanButton({ onScan, children = "Scan to find", className = "au-btn au-btn-sm au-btn-primary" }) {
+  const [scanning, setScanning] = useState(false);
+  return (
+    <>
+      <button type="button" className={className} onClick={() => setScanning(true)}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ marginRight: 4 }}>
+          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M11 8v8M15 8v8M18 8v8" />
+        </svg>
+        {children}
+      </button>
+      {scanning && <ScanDialog onClose={() => setScanning(false)} onDetect={(code) => { setScanning(false); onScan(code); }} />}
+    </>
   );
 }

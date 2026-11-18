@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, qty } from "./api";
-import { Badge, CountForm, Card, ErrorBox, Field, Loading, Modal, Stat, useLoad, useToast } from "./ui";
+import { Badge, BarcodeInput, ScanButton, CountForm, Card, ErrorBox, Field, Loading, Modal, Stat, useLoad, useToast } from "./ui";
 import { HistoryDialog, LogDialog } from "./Panels";
 
 // Pending / Completed categories. A category sits in Pending until EVERY barcode in it
@@ -15,6 +15,25 @@ export function StatusTree({ role, auditId, canAct = false, refreshKey, onChange
   const [ver, setVer] = useState(0); // bumps => open categories reload
   const [dlg, setDlg] = useState(null); // { type: count | reset | log | history, item }
   const [toast, notify] = useToast();
+  const [focus, setFocus] = useState(null); // product found by scanning: opens its category and highlights the row
+
+  useEffect(() => {
+    if (!focus) return;
+    const t = setTimeout(() => setFocus(null), 8000);
+    return () => clearTimeout(t);
+  }, [focus]);
+
+  // scan -> ask the server where the barcode is -> open that category
+  const locate = async (code) => {
+    try {
+      const r = await api(`/${auditId}/locate?barcode=${encodeURIComponent(code)}`, { who });
+      setSection(r.categoryComplete ? "completed" : "pending");
+      setFocus({ ...r, nonce: Date.now() });
+      notify(`${r.productName}: ${r.categoryName} › ${r.subCategoryName}`);
+    } catch (e) {
+      notify(e.message, "err");
+    }
+  };
 
   const data = summary.data;
   const close = () => setDlg(null);
@@ -22,7 +41,12 @@ export function StatusTree({ role, auditId, canAct = false, refreshKey, onChange
   const list = data?.[section] ?? [];
 
   return (
-    <Card title="Products" right={<button className="au-btn au-btn-ghost au-btn-sm" onClick={() => { setVer((v) => v + 1); summary.reload(); }}>Refresh</button>}>
+    <Card title="Products" right={
+      <div className="au-row">
+        <ScanButton onScan={locate} />
+        <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => { setVer((v) => v + 1); summary.reload(); }}>Refresh</button>
+      </div>
+    }>
       {toast}
       <ErrorBox error={summary.error} onRetry={summary.reload} />
       {summary.loading && !data ? <Loading /> : data && (
@@ -42,7 +66,7 @@ export function StatusTree({ role, auditId, canAct = false, refreshKey, onChange
           </p>
           {list.length === 0 && <p className="au-muted">{section === "pending" ? "Nothing pending. Every category is completed." : "No category is completed yet."}</p>}
           {list.map((c) => (
-            <CategoryBlock key={`${section}-${c.categoryId}`} cat={c} role={role} auditId={auditId} who={who} canAct={canAct} ver={ver} onAction={(type, item) => setDlg({ type, item })} />
+            <CategoryBlock key={`${section}-${c.categoryId}`} cat={c} role={role} auditId={auditId} who={who} canAct={canAct} ver={ver} focus={focus} onAction={(type, item) => setDlg({ type, item })} />
           ))}
         </>
       )}
@@ -55,10 +79,11 @@ export function StatusTree({ role, auditId, canAct = false, refreshKey, onChange
   );
 }
 
-function CategoryBlock({ cat, role, auditId, who, canAct, ver, onAction }) {
+function CategoryBlock({ cat, role, auditId, who, canAct, ver, focus, onAction }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (focus && focus.categoryId === cat.categoryId) setOpen(true); }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <details className="au-group" onToggle={(e) => setOpen(e.currentTarget.open)}>
+    <details className="au-group" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
         {cat.categoryName}
         <span className="au-chip">{cat.done} of {cat.total} counted</span>
@@ -69,7 +94,7 @@ function CategoryBlock({ cat, role, auditId, who, canAct, ver, onAction }) {
         {cat.soldOut > 0 && <span className="au-chip">{cat.soldOut} sold out</span>}
         {cat.negative > 0 && <span className="au-chip">{cat.negative} negative</span>}
       </summary>
-      {open && <CategoryBody cat={cat} role={role} auditId={auditId} who={who} canAct={canAct} ver={ver} onAction={onAction} />}
+      {open && <CategoryBody cat={cat} role={role} auditId={auditId} who={who} canAct={canAct} ver={ver} focus={focus} onAction={onAction} />}
     </details>
   );
 }
@@ -77,10 +102,18 @@ function CategoryBlock({ cat, role, auditId, who, canAct, ver, onAction }) {
 const FILTERS = [["all", "All"], ["todo", "To do"], ["done", "Counted"]];
 const isDone = (s) => s === "Matched" || s === "Short" || s === "Excess";
 
-function CategoryBody({ cat, role, auditId, who, canAct, ver, onAction }) {
+function CategoryBody({ cat, role, auditId, who, canAct, ver, focus, onAction }) {
   const { data, error, loading, reload } = useLoad(() => api(`/${auditId}/tree/${cat.categoryId}`, { who }), [auditId, who, cat.categoryId, ver]);
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
+  const mine = !!focus && focus.categoryId === cat.categoryId;
+
+  // a scan shows everything in this category again, then scrolls to the product
+  useEffect(() => { if (mine) { setFilter("all"); setQ(""); } }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!mine || !data) return;
+    document.getElementById(`au-row-${focus.verificationId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [data, focus, filter, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -97,7 +130,7 @@ function CategoryBody({ cat, role, auditId, who, canAct, ver, onAction }) {
         <div className="au-seg">
           {FILTERS.map(([k, l]) => <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{l}</button>)}
         </div>
-        <input className="au-input au-input-sm" style={{ flex: 1, minWidth: 160 }} placeholder="Filter by product or barcode" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter" />
+        <BarcodeInput placeholder="Filter by product or barcode" value={q} onChange={setQ} />
       </div>
 
       {data.subCategories.map((sg) => {
@@ -127,7 +160,7 @@ function CategoryBody({ cat, role, auditId, who, canAct, ver, onAction }) {
                   {items.map((it) => {
                     const counted = isDone(it.status);
                     return (
-                      <tr key={it.verificationId}>
+                      <tr key={it.verificationId} id={`au-row-${it.verificationId}`} className={focus?.verificationId === it.verificationId ? "au-row-hit" : ""}>
                         <td>
                           <strong>{it.barcode}</strong>
                           {it.stockKind !== "InStock" && <span className="au-chip">{it.stockKind === "SoldOut" ? "Sold out" : "Negative stock"}</span>}

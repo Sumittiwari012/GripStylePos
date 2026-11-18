@@ -153,3 +153,14 @@
 .au-checklist .au-check:last-child { border-bottom: 0; }
 .au-checklist .au-chip { margin-left: auto; }
 .au-tabs button .au-chip { margin-left: .4rem; }
+
+/* barcode scanner */
+.au-scanrow-sm { flex: 1; min-width: 200px; }
+.au-scanrow-sm .au-btn { min-height: 32px; }
+.au-scanview { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 4 / 3; margin-bottom: .6rem; }
+.au-scanview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.au-scanframe { position: absolute; inset: 22% 10%; border: 3px solid #f2b705; border-radius: 10px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); pointer-events: none; }
+
+/* row found by scanning */
+.au-table tr.au-row-hit td { background: #fff4cc; }
+.au-table tr.au-row-hit td:first-child { box-shadow: inset 4px 0 0 #f2b705; }

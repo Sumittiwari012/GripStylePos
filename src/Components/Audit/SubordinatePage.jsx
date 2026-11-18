@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, qty, session } from "./api";
-import { Badge, Card, CountForm, ErrorBox, Loading, Modal, ReviewBadge, Shell, Stat, useLoad, useToast } from "./ui";
+import { Badge, BarcodeInput, ScanButton, Card, CountForm, ErrorBox, Loading, Modal, ReviewBadge, Shell, Stat, useLoad, useToast } from "./ui";
 
 const isDone = (s) => s === "Matched" || s === "Short" || s === "Excess";
 
@@ -18,6 +18,25 @@ export default function SubordinatePage() {
   const [ver, setVer] = useState(0); // bumps => opened categories reload
   const [dlg, setDlg] = useState(null); // { item }
   const [toast, notify] = useToast();
+  const [focus, setFocus] = useState(null); // product found by scanning
+
+  useEffect(() => {
+    if (!focus) return;
+    const t = setTimeout(() => setFocus(null), 8000);
+    return () => clearTimeout(t);
+  }, [focus]);
+
+  // The server only finds barcodes in the categories assigned to this subordinate.
+  const locate = async (code) => {
+    try {
+      const r = await api(`/${auditId}/locate?barcode=${encodeURIComponent(code)}`);
+      setSection(r.categoryComplete ? "completed" : "pending");
+      setFocus({ ...r, nonce: Date.now() });
+      notify(`${r.productName}: ${r.categoryName} › ${r.subCategoryName}`);
+    } catch (e) {
+      notify(e.message, "err");
+    }
+  };
 
   const status = me.data?.audit?.status;
   const counting = status === "InProgress";
@@ -43,7 +62,12 @@ export default function SubordinatePage() {
         </div>
       )}
 
-      <Card title="Your categories" right={<button className="au-btn au-btn-ghost au-btn-sm" onClick={refresh}>Refresh</button>}>
+      <Card title="Your categories" right={
+        <div className="au-row">
+          <ScanButton onScan={locate} />
+          <button className="au-btn au-btn-ghost au-btn-sm" onClick={refresh}>Refresh</button>
+        </div>
+      }>
         <ErrorBox error={cats.error} onRetry={cats.reload} />
         {cats.loading && !data ? <Loading /> : data && (
           data.assignedCount === 0 ? (
@@ -65,7 +89,7 @@ export default function SubordinatePage() {
               </p>
               {list.length === 0 && <p className="au-muted">{section === "pending" ? "Nothing pending." : "No category is completed yet."}</p>}
               {list.map((c) => (
-                <CategoryBlock key={`${section}-${c.categoryId}`} cat={c} auditId={auditId} ver={ver} canAct={counting} onCount={(item) => setDlg({ item })} />
+                <CategoryBlock key={`${section}-${c.categoryId}`} cat={c} auditId={auditId} ver={ver} canAct={counting} focus={focus} onCount={(item) => setDlg({ item })} />
               ))}
             </>
           )
@@ -77,27 +101,35 @@ export default function SubordinatePage() {
   );
 }
 
-function CategoryBlock({ cat, auditId, ver, canAct, onCount }) {
+function CategoryBlock({ cat, auditId, ver, canAct, focus, onCount }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (focus && focus.categoryId === cat.categoryId) setOpen(true); }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <details className="au-group" onToggle={(e) => setOpen(e.currentTarget.open)}>
+    <details className="au-group" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
         {cat.categoryName}
         <span className="au-chip">{cat.settled} of {cat.total} settled</span>
         {cat.sentByMe > 0 && <span className="au-chip">{cat.sentByMe} sent by you</span>}
         {cat.rejectedForMe > 0 && <span className="au-chip">{cat.rejectedForMe} rejected</span>}
       </summary>
-      {open && <CategoryBody cat={cat} auditId={auditId} ver={ver} canAct={canAct} onCount={onCount} />}
+      {open && <CategoryBody cat={cat} auditId={auditId} ver={ver} canAct={canAct} focus={focus} onCount={onCount} />}
     </details>
   );
 }
 
 const FILTERS = [["all", "All"], ["todo", "To do"], ["done", "Settled"]];
 
-function CategoryBody({ cat, auditId, ver, canAct, onCount }) {
+function CategoryBody({ cat, auditId, ver, canAct, focus, onCount }) {
   const { data, error, loading, reload } = useLoad(() => api(`/${auditId}/sub/categories/${cat.categoryId}`), [auditId, cat.categoryId, ver]);
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
+  const mine = !!focus && focus.categoryId === cat.categoryId;
+
+  useEffect(() => { if (mine) { setFilter("all"); setQ(""); } }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!mine || !data) return;
+    document.getElementById(`au-row-${focus.verificationId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [data, focus, filter, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -114,7 +146,7 @@ function CategoryBody({ cat, auditId, ver, canAct, onCount }) {
         <div className="au-seg">
           {FILTERS.map(([k, l]) => <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{l}</button>)}
         </div>
-        <input className="au-input au-input-sm" style={{ flex: 1, minWidth: 160 }} placeholder="Filter by product or barcode" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter" />
+        <BarcodeInput placeholder="Filter by product or barcode" value={q} onChange={setQ} />
       </div>
 
       {data.subCategories.map((sg) => {
@@ -142,7 +174,7 @@ function CategoryBody({ cat, auditId, ver, canAct, onCount }) {
                   {items.map((it) => {
                     const c = it.myCount;
                     return (
-                      <tr key={it.verificationId}>
+                      <tr key={it.verificationId} id={`au-row-${it.verificationId}`} className={focus?.verificationId === it.verificationId ? "au-row-hit" : ""}>
                         <td>
                           <strong>{it.barcode}</strong>
                           {it.stockKind !== "InStock" && <span className="au-chip">{it.stockKind === "SoldOut" ? "Sold out" : "Negative stock"}</span>}
