@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ErrorBox, Field } from "../Audit/ui";
-import { RACK_BASE, RackApi, rackSession } from "./rackApi";
-import "../Audit/audit.css";
+import { ErrorBox, Field } from "./ui";
+import { RACK_ADMIN_USER_IDS, RACK_BASE, RackApi, rackSession } from "./rackApi";
 import "./rack.css";
 
 // Rack manager login. The code goes by WhatsApp to the mobile number saved for user 1.
 export default function RackLogin() {
   const nav = useNavigate();
   const [step, setStep] = useState("send"); // send -> otp
+  const [userId, setUserId] = useState(RACK_ADMIN_USER_IDS[0]);
   const [otp, setOtp] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -30,7 +30,7 @@ export default function RackLogin() {
     setBusy(true);
     setError(null);
     try {
-      await RackApi.sendOtp();
+      await RackApi.sendOtp(userId);
       setStep("otp");
       setWait(30);
     } catch (err) {
@@ -45,8 +45,8 @@ export default function RackLogin() {
     setBusy(true);
     setError(null);
     try {
-      const r = await RackApi.verifyOtp(otp);
-      rackSession.set({ token: r.token, expiresAt: Date.now() + r.expiresInMinutes * 60 * 1000 });
+      const r = await RackApi.verifyOtp(userId, otp);
+      rackSession.set({ userId, token: r.token, expiresAt: Date.now() + r.expiresInMinutes * 60 * 1000 });
       nav(`${RACK_BASE}/manage`, { replace: true });
     } catch (err) {
       setError(err);
@@ -62,12 +62,17 @@ export default function RackLogin() {
         <h1>Rack manager login</h1>
         <p className="au-sub">
           {step === "send"
-            ? "We send a one-time code on WhatsApp to the registered mobile number."
+            ? "Choose who is logging in. We send a one-time code on WhatsApp to that person's registered mobile number."
             : "Enter the 4-digit code we sent on WhatsApp."}
         </p>
 
         {step === "send" ? (
           <form className="au-form" onSubmit={sendOtp}>
+            <Field label="User">
+              <select className="au-input" value={userId} onChange={(e) => setUserId(Number(e.target.value))}>
+                {RACK_ADMIN_USER_IDS.map((id) => <option key={id} value={id}>User {id}</option>)}
+              </select>
+            </Field>
             <button className="au-btn au-btn-primary" disabled={busy}>
               {busy ? "Sending…" : "Send code"}
             </button>
@@ -92,6 +97,9 @@ export default function RackLogin() {
             <div className="au-row">
               <button type="button" className="au-btn au-btn-ghost au-btn-sm" disabled={wait > 0 || busy} onClick={sendOtp}>
                 {wait > 0 ? `Send again in ${wait}s` : "Send a new code"}
+              </button>
+              <button type="button" className="au-btn au-btn-ghost au-btn-sm" disabled={busy} onClick={() => { setStep("send"); setOtp(""); setError(null); }}>
+                Change user
               </button>
             </div>
           </form>

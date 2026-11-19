@@ -1,13 +1,13 @@
 // ─────────────────────────────────────────────────────────────
 // Rack API client. Same shape as api.js (audit).
 // The rack manager logs in with a WhatsApp OTP and sends the returned token
-// as the X-Rack-Token header. Only user id 1 is allowed by the backend.
+// as the X-Rack-Token header. Only the user ids allowed by the backend can log in.
 // API_BASE comes from api.js, so there is one place to change the backend URL.
 // ─────────────────────────────────────────────────────────────
 import { API_BASE, ApiError } from "../Audit/api";
 
 export const RACK_BASE = "/rack"; // where you mount the rack pages in your router
-export const RACK_ADMIN_USER_ID = 1;
+export const RACK_ADMIN_USER_IDS = [1, 2]; // keep in step with ALLOWED_USER_IDS in RackController.cs
 
 const SESSION_KEY = "rackSession";
 
@@ -92,8 +92,8 @@ const clean = (v) => (typeof v === "string" && v.trim() === "" ? null : v);
 
 export const RackApi = {
   // login
-  sendOtp: () => rackApi("/SendOtp", { method: "POST", body: { userId: RACK_ADMIN_USER_ID } }),
-  verifyOtp: (otp) => rackApi("/VerifyOtp", { method: "POST", body: { userId: RACK_ADMIN_USER_ID, otpVal: Number(otp) } }),
+  sendOtp: (userId) => rackApi("/SendOtp", { method: "POST", body: { userId: Number(userId) } }),
+  verifyOtp: (userId, otp) => rackApi("/VerifyOtp", { method: "POST", body: { userId: Number(userId), otpVal: Number(otp) } }),
 
   // manager (token required)
   getRacks: () => rackApi("/GetRacks", { auth: true }),
