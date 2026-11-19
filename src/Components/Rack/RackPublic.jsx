@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Card, ErrorBox, FindBar, Loading, ScanButton, ScanDialog, useLoad, useToast } from "../Audit/ui";
-import { parseRackId, RACK_BASE, RackApi } from "./rackApi";
+import { parseRackCode, rackPath, RACK_BASE, RackApi } from "./rackApi";
 import { LocateModal, LocateResult, RackShell, rackPlace, StockTable } from "./rackUi";
 
 // ═════════════ /rack/scan : scan anything ═════════════
@@ -36,7 +36,7 @@ export function RackScan() {
     setResult(null);
     try {
       const r = await RackApi.byCode(code);
-      nav(`${RACK_BASE}/${r.id}`);
+      nav(rackPath(r.rackCode));
     } catch (e) {
       setError(e);
       setBusy(false);
@@ -45,8 +45,8 @@ export function RackScan() {
 
   const onDetect = (code) => {
     setScanning(false);
-    const rackId = parseRackId(code);
-    if (rackId) nav(`${RACK_BASE}/${rackId}`);
+    const rackCode = parseRackCode(code);
+    if (rackCode) nav(rackPath(rackCode));
     else findBarcode(code);
   };
 
@@ -70,7 +70,7 @@ export function RackScan() {
       <ErrorBox error={error} />
       {result && (
         <Card title={result.product.productName}>
-          <LocateResult result={result} rackHref={(r) => `${RACK_BASE}/${r.id}`} />
+          <LocateResult result={result} rackHref={(r) => rackPath(r.rackCode)} />
         </Card>
       )}
       {!scanning && !busy && (
@@ -112,15 +112,15 @@ export function RackFind() {
   const [typed, setTyped] = useState("");
 
   const openRack = (text) => {
-    const id = parseRackId(text);
-    if (!id) return notify("That is not a rack QR code.", "err");
-    nav(`${RACK_BASE}/${id}`);
+    const code = parseRackCode(text);
+    if (!code) return notify("That is not a rack QR code.", "err");
+    nav(rackPath(code));
   };
 
   const openByCode = async (code) => {
     try {
       const r = await RackApi.byCode(code);
-      nav(`${RACK_BASE}/${r.id}`);
+      nav(rackPath(r.rackCode));
     } catch (e) {
       notify(e.message, "err");
     }
@@ -157,15 +157,25 @@ export function RackFind() {
         <FindBar onFind={locate} placeholder="Type or scan a barcode" />
       </Card>
 
-      {found && <LocateModal result={found} rackHref={(r) => `${RACK_BASE}/${r.id}`} onClose={() => setFound(null)} />}
+      {found && <LocateModal result={found} rackHref={(r) => rackPath(r.rackCode)} onClose={() => setFound(null)} />}
     </RackShell>
   );
 }
 
-// ═════════════ /rack/:rackId : one rack, products split into in stock and out of stock ═════════════
+// ═════════════ /rack/:rackCode : one rack, products split into in stock and out of stock ═════════════
 export function RackView() {
-  const { rackId } = useParams();
-  const { data, error, loading, reload } = useLoad(() => RackApi.scan(rackId), [rackId]);
+  const { rackCode } = useParams();
+  // The address holds the rack code. Old QR codes that hold a rack number still work.
+  const { data, error, loading, reload } = useLoad(async () => {
+    let id;
+    try {
+      id = (await RackApi.byCode(rackCode)).id;
+    } catch (e) {
+      if (e.status === 0 || !/^\d+$/.test(rackCode)) throw e;
+      id = rackCode;
+    }
+    return RackApi.scan(id);
+  }, [rackCode]);
   const back = { to: RACK_BASE, label: "Check another rack" };
 
   if (loading && !data) return <RackShell title="Rack" back={back}><Loading /></RackShell>;

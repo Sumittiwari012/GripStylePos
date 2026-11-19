@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react"; // npm i qrcode.react
 import { qty } from "../Audit/api";
 import { BarcodeInput, Modal, Stat } from "../Audit/ui";
-import { RACK_BASE, rackSession } from "./rackApi";
+import { RACK_BASE, rackSession, rackUrl } from "./rackApi";
 import "../Audit/audit.css";
 import "./rack.css";
 
@@ -147,7 +147,7 @@ export function StockTable({ items, selectable = false, selected, onToggle, onTo
 // opens that rack's stock list. Download gives a PNG with the rack code under it.
 export function RackQr({ rack }) {
   const wrap = useRef(null);
-  const url = `${window.location.origin}${RACK_BASE}/${rack.id}`;
+  const url = rackUrl(rack.rackCode);
 
   const download = () => {
     const src = wrap.current.querySelector("canvas");
@@ -243,7 +243,7 @@ export function RackPrintSheet({ racks, onDone }) {
       <div className="rack-print-grid">
         {racks.map((r) => (
           <div key={r.id} className="rack-print-label">
-            <QRCodeSVG value={`${window.location.origin}${RACK_BASE}/${r.id}`} size={170} level="M" />
+            <QRCodeSVG value={rackUrl(r.rackCode)} size={170} level="M" />
             <div className="rack-print-code">{r.rackCode}</div>
             {r.rackName && <div className="rack-print-name">{r.rackName}</div>}
             <div className="rack-print-place">{[r.godown, r.section].filter(Boolean).join(", ")}</div>

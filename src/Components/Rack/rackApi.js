@@ -87,6 +87,13 @@ export async function rackApi(path, { method = "GET", body, auth = false } = {})
   return data;
 }
 
+// Codes that are already page names under /rack, so a rack cannot use them.
+export const RESERVED_RACK_WORDS = ["scan", "login", "manage"];
+
+// Public page of a rack, built from its rack CODE (this is what the QR code holds).
+export const rackPath = (code) => `${RACK_BASE}/${encodeURIComponent(code)}`;
+export const rackUrl = (code) => `${window.location.origin}${rackPath(code)}`;
+
 const enc = encodeURIComponent;
 const clean = (v) => (typeof v === "string" && v.trim() === "" ? null : v);
 
@@ -97,8 +104,11 @@ export const RackApi = {
 
   // manager (token required)
   getRacks: () => rackApi("/GetRacks", { auth: true }),
-  createRack: (f) =>
-    rackApi("/CreateRack", {
+  createRack: (f) => {
+    const code = f.rackCode.trim();
+    if (RESERVED_RACK_WORDS.includes(code.toLowerCase()))
+      return Promise.reject(new ApiError(400, `"${code}" cannot be used as a rack code. Please choose another.`));
+    return rackApi("/CreateRack", {
       method: "POST",
       auth: true,
       body: {
@@ -109,7 +119,8 @@ export const RackApi = {
         description: clean(f.description),
         isActive: true,
       },
-    }),
+    });
+  },
   deleteRack: (rackId) => rackApi(`/DeleteRack?rackId=${rackId}`, { method: "DELETE", auth: true }),
   assignProducts: (rackId, productIds) => rackApi("/AssignProducts", { method: "POST", auth: true, body: { rackId, productIds } }),
   moveAll: (fromRackId, toRackId) => rackApi("/MoveAllProducts", { method: "POST", auth: true, body: { fromRackId, toRackId } }),
@@ -121,10 +132,12 @@ export const RackApi = {
   byCode: (code) => rackApi(`/ByCode?code=${enc(code)}`), // { id, rackCode, rackName }
 };
 
-// A rack QR code holds  https://your-site/rack/<id>.
-// Pass allowBare = true to also accept a typed rack number.
-export function parseRackId(text, allowBare = false) {
-  const s = String(text).trim();
-  const m = s.match(/\/rack\/(\d+)\b/) || (allowBare ? s.match(/^(\d+)$/) : null);
-  return m ? m[1] : null;
+// A rack QR code holds  https://your-site/rack/<rackCode>.
+// Returns the rack code from scanned text, or null if it is not a rack QR code.
+export function parseRackCode(text) {
+  const m = String(text).trim().match(/\/rack\/([^/?#\s]+)/);
+  if (!m) return null;
+  let code;
+  try { code = decodeURIComponent(m[1]); } catch { return null; }
+  return RESERVED_RACK_WORDS.includes(code.toLowerCase()) ? null : code;
 }
