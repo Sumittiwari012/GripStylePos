@@ -1,0 +1,13 @@
+/* Rack pages: only what audit.css does not already have.
+   Everything sits inside the .au wrapper, so the audit colour variables apply. */
+
+.au-qr { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; }
+.au-qr canvas { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: .5rem; max-width: 100%; height: auto; }
+.au-qr-side { display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; max-width: 360px; }
+
+.au-moverow { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .5rem 0 .75rem; }
+.au-moverow select { flex: 1; min-width: 180px; }
+
+@media print {
+  .au-moverow { display: none !important; }
+}

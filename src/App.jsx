@@ -12,6 +12,7 @@ import InboxPage from './Components/mfwp/InboxPage';
 import MyChatsPage from './Components/mfwp/MyChatsPage';
 import AdminPage from './Components/mfwp/AdminPage';
 import { auditRoutes } from "./Components/Audit/routes";
+import { rackRoutes } from "./Components/Rack/rackRoutes";
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
       <Route path="/adminwp" element={<AdminPage />} />
 
       {auditRoutes}   {/* ← new: all 7 audit routes */}
+      {rackRoutes}    {/* ← new: all 5 rack routes */}
     </Routes>
   )
 }
