@@ -8,6 +8,32 @@
 .au-moverow { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .5rem 0 .75rem; }
 .au-moverow select { flex: 1; min-width: 180px; }
 
+.au-selrow { display: flex; gap: .6rem; align-items: center; }
+.au-selrow .au-listitem { flex: 1; min-width: 0; }
+.au-selbar { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin: .5rem 0; }
+.au-selbar label { display: inline-flex; gap: .4rem; align-items: center; cursor: pointer; }
+
+/* The print sheet lives outside .au, so it uses plain colours. */
+.rack-print-root { display: none; }
+
 @media print {
   .au-moverow { display: none !important; }
+
+  body.rack-printing > *:not(.rack-print-root) { display: none !important; }
+  body.rack-printing .rack-print-root { display: block; }
+
+  .rack-print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+  .rack-print-label {
+    border: 1px dashed #999; /* cut lines */
+    padding: 12px 8px;
+    text-align: center;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    font-family: sans-serif;
+    color: #000;
+  }
+  .rack-print-label svg { width: 100%; max-width: 170px; height: auto; }
+  .rack-print-code { font-size: 22px; font-weight: 700; margin-top: 6px; }
+  .rack-print-name { font-size: 13px; }
+  .rack-print-place { font-size: 11px; color: #444; }
 }

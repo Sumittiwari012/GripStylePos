@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
-import { QRCodeCanvas } from "qrcode.react"; // npm i qrcode.react
+import { QRCodeCanvas, QRCodeSVG } from "qrcode.react"; // npm i qrcode.react
 import { qty } from "../Audit/api";
 import { BarcodeInput, Modal, Stat } from "../Audit/ui";
 import { RACK_BASE, rackSession } from "./rackApi";
@@ -219,5 +220,37 @@ export function LocateResult({ result, rackHref }) {
         <div className="au-banner au-banner-warn">This product has not been placed on a rack yet.</div>
       )}
     </>
+  );
+}
+
+// Prints one label (QR code + rack code) for each rack, all on one sheet.
+// It is rendered straight into <body>, so the print CSS can hide the rest of the page.
+export function RackPrintSheet({ racks, onDone }) {
+  useEffect(() => {
+    document.body.classList.add("rack-printing");
+    const t = setTimeout(() => {
+      window.print(); // blocks until the print dialog is closed
+      onDone();
+    }, 300); // let the QR codes draw first
+    return () => {
+      clearTimeout(t);
+      document.body.classList.remove("rack-printing");
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return createPortal(
+    <div className="rack-print-root">
+      <div className="rack-print-grid">
+        {racks.map((r) => (
+          <div key={r.id} className="rack-print-label">
+            <QRCodeSVG value={`${window.location.origin}${RACK_BASE}/${r.id}`} size={170} level="M" />
+            <div className="rack-print-code">{r.rackCode}</div>
+            {r.rackName && <div className="rack-print-name">{r.rackName}</div>}
+            <div className="rack-print-place">{[r.godown, r.section].filter(Boolean).join(", ")}</div>
+          </div>
+        ))}
+      </div>
+    </div>,
+    document.body
   );
 }

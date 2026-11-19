@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Card, ErrorBox, Field, FindBar, Loading, ScanButton, useLoad, useToast } from "../Audit/ui";
 import { RACK_BASE, RackApi } from "./rackApi";
-import { LocateModal, RackQr, RackShell, rackPlace, StockTable } from "./rackUi";
+import { LocateModal, RackPrintSheet, RackQr, RackShell, rackPlace, StockTable } from "./rackUi";
 
 const ALL_RACKS = { to: `${RACK_BASE}/manage`, label: "All racks" };
 
@@ -16,6 +16,17 @@ export function RackHome() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [found, setFound] = useState(null);
+  const [picked, setPicked] = useState(() => new Set());
+  const [printing, setPrinting] = useState(false);
+
+  const toggleRack = (id) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  const allPicked = !!data?.length && data.every((r) => picked.has(r.id));
+  const toggleAll = () => setPicked(allPicked ? new Set() : new Set(data.map((r) => r.id)));
 
   const create = async (e) => {
     e.preventDefault();
@@ -64,22 +75,46 @@ export function RackHome() {
       {loading && !data ? <Loading /> : data?.length === 0 ? (
         <Card><p>You have no racks yet. Create one, then add products to it by barcode.</p></Card>
       ) : (
-        <div className="au-list">
-          {data?.map((r) => (
-            <Link key={r.id} to={`${RACK_BASE}/manage/${r.id}`} className="au-listitem">
-              <div>
-                <span className="au-codebox">{r.rackCode}</span> <strong>{r.rackName || "Unnamed rack"}</strong>
-                <div className="au-muted">{[r.godown, r.section].filter(Boolean).join(", ") || "No location details"}</div>
+        <>
+          <div className="au-selbar">
+            <label>
+              <input type="checkbox" checked={allPicked} onChange={toggleAll} /> Select all
+            </label>
+            <button className="au-btn au-btn-primary au-btn-sm" disabled={picked.size === 0} onClick={() => setPrinting(true)}>
+              Print QR codes ({picked.size})
+            </button>
+          </div>
+          <div className="au-list">
+            {data?.map((r) => (
+              <div key={r.id} className="au-selrow">
+                <input
+                  type="checkbox"
+                  aria-label={`Select rack ${r.rackCode}`}
+                  checked={picked.has(r.id)}
+                  onChange={() => toggleRack(r.id)}
+                />
+                <Link to={`${RACK_BASE}/manage/${r.id}`} className="au-listitem">
+                  <div>
+                    <span className="au-codebox">{r.rackCode}</span> <strong>{r.rackName || "Unnamed rack"}</strong>
+                    <div className="au-muted">{[r.godown, r.section].filter(Boolean).join(", ") || "No location details"}</div>
+                  </div>
+                  <div className="au-listitem-r">
+                    <span className="au-chip">{r.productCount} {r.productCount === 1 ? "product" : "products"}</span>
+                  </div>
+                </Link>
               </div>
-              <div className="au-listitem-r">
-                <span className="au-chip">{r.productCount} {r.productCount === 1 ? "product" : "products"}</span>
-              </div>
-            </Link>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
       {found && <LocateModal result={found} rackHref={(r) => `${RACK_BASE}/manage/${r.id}`} onClose={() => setFound(null)} />}
+      {printing && (
+        <RackPrintSheet
+          racks={data.filter((r) => picked.has(r.id))}
+          onDone={() => setPrinting(false)}
+        />
+      )}
     </RackShell>
   );
 }
