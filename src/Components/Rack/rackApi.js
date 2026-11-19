@@ -4,7 +4,7 @@
 // as the X-Rack-Token header. Only user id 1 is allowed by the backend.
 // API_BASE comes from api.js, so there is one place to change the backend URL.
 // ─────────────────────────────────────────────────────────────
-import { API_BASE, ApiError } from "../audit/api";
+import { API_BASE, ApiError } from "../Audit/api";
 
 export const RACK_BASE = "/rack"; // where you mount the rack pages in your router
 export const RACK_ADMIN_USER_ID = 1;

@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { QRCodeCanvas } from "qrcode.react"; // npm i qrcode.react
-import { qty } from "../audit/api";
-import { BarcodeInput, Modal, Stat } from "../audit/ui";
+import { qty } from "../Audit/api";
+import { BarcodeInput, Modal, Stat } from "../Audit/ui";
 import { RACK_BASE, rackSession } from "./rackApi";
-import "../audit/audit.css";
+import "../Audit/audit.css";
 import "./rack.css";
 
 // Same markup and classes as Shell in ui.jsx. A separate component because

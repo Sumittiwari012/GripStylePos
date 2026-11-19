@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Card, ErrorBox, Field, FindBar, Loading, ScanButton, useLoad, useToast } from "../audit/ui";
+import { Card, ErrorBox, Field, FindBar, Loading, ScanButton, useLoad, useToast } from "../Audit/ui";
 import { RACK_BASE, RackApi } from "./rackApi";
 import { LocateModal, RackQr, RackShell, rackPlace, StockTable } from "./rackUi";
 
