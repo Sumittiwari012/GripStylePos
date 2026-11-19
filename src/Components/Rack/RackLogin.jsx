@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ErrorBox, Field } from "./ui";
+import { ErrorBox, Field } from "../Audit/ui";
 import { RACK_ADMIN_USER_IDS, RACK_BASE, RackApi, rackSession } from "./rackApi";
+import "../Audit/audit.css";
 import "./rack.css";
 
 // Rack manager login. The code goes by WhatsApp to the mobile number saved for user 1.
