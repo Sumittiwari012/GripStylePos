@@ -16,9 +16,9 @@
 /* The print sheet lives outside .au, so it uses plain colours. */
 .rack-print-root { display: none; }
 
-/* Label size: 25 mm wide x 50 mm tall, one label per page (label printer roll).
-   The QR code is 20 mm square, the rack code and name sit under it. */
-@page { size: 25mm 50mm; margin: 0; }
+/* Label: 50 mm wide x 25 mm tall, one label per page (label printer roll).
+   QR code on the left filling the full height, rack code and name on the right. */
+@page { size: 50mm 25mm; margin: 0; }
 
 @media print {
   .au-moverow { display: none !important; }
@@ -30,11 +30,15 @@
   .rack-print-grid { display: block; }
   .rack-print-label {
     box-sizing: border-box;
-    width: 50mm;
-    height: 25mm;
-    padding: 2mm;
+    width: 100vw;   /* fills the paper picked in the print dialog (50 x 25 mm) */
+    height: 100vh;
+    padding: 1.5mm;
     overflow: hidden;
-    text-align: center;
+    display: grid;
+    grid-template-columns: calc(100vh - 3mm) minmax(0, 1fr);
+    grid-template-rows: min-content min-content min-content 1fr;
+    column-gap: 2mm;
+    text-align: left;
     break-after: page;
     page-break-after: always;
     break-inside: avoid;
@@ -43,8 +47,11 @@
     color: #000;
   }
   .rack-print-label:last-child { break-after: auto; page-break-after: auto; }
-  .rack-print-label svg { display: block; width: 20mm; height: 20mm; max-width: none; margin: 0 auto; }
-  .rack-print-code { font-size: 12pt; font-weight: 700; margin-top: 2mm; line-height: 1.1; word-break: break-all; }
-  .rack-print-name { font-size: 7pt; line-height: 1.15; margin-top: 1mm; max-height: 8mm; overflow: hidden; }
-  .rack-print-place { font-size: 6pt; line-height: 1.15; color: #444; margin-top: 1mm; max-height: 7mm; overflow: hidden; }
+  .rack-print-label svg { display: block; grid-column: 1; grid-row: 1 / span 4; width: calc(100vh - 3mm); height: calc(100vh - 3mm); max-width: none; }
+  .rack-print-code, .rack-print-name, .rack-print-place { grid-column: 2; }
+
+  /* the three text lines share the space to the right of the QR code */
+  .rack-print-code { font-size: 14pt; font-weight: 700; line-height: 1.1; word-break: break-all; }
+  .rack-print-name { font-size: 8pt; line-height: 1.15; margin-top: 1mm; max-height: 9mm; overflow: hidden; }
+  .rack-print-place { font-size: 7pt; line-height: 1.15; color: #444; margin-top: 1mm; max-height: 7mm; overflow: hidden; }
 }
