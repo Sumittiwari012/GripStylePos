@@ -30,8 +30,8 @@
   .rack-print-grid { display: block; }
   .rack-print-label {
     box-sizing: border-box;
-    width: 25mm;
-    height: 50mm;
+    width: 50mm;
+    height: 25mm;
     padding: 2mm;
     overflow: hidden;
     text-align: center;
