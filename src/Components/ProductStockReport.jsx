@@ -138,7 +138,6 @@ export default function ProductStockReport() {
           <div><dt>Purchased</dt><dd>{fmtQty(totals.purchaseQty)}</dd></div>
           <div><dt>Sold</dt><dd>{fmtQty(totals.salesQty)}</dd></div>
           <div><dt>Returned</dt><dd>{fmtQty(totals.returnQty)}</dd></div>
-          <div className="hero"><dt>Available</dt><dd>{fmtQty(totals.availableQty)}</dd></div>
         </dl>
       )}
 
@@ -154,13 +153,11 @@ export default function ProductStockReport() {
               <th className="n">Purchased</th>
               <th className="n">Sold</th>
               <th className="n">Returned</th>
-              <th className="n">Available</th>
               <th className="n">In stock table</th>
             </tr>
           </thead>
           <tbody>
             {items.map((p) => {
-              const mismatch = Math.abs(p.availableQty - p.storedQty) > 0.001;
               return (
                 <tr key={p.productId}>
                   <td>
@@ -171,29 +168,26 @@ export default function ProductStockReport() {
                     {p.categoryName ?? p.categoryId}
                     <span className="sub">{p.subCategoryName ?? p.subCategoryId}</span>
                   </td>
-                  <td className="n">{fmtQty(p.openingStock)}</td>
+                  <td className="n">
+                    {fmtQty(p.openingStock)}
+                    {p.openingCalculated && <span className="sub" title="Stock table + sold − returned">calculated</span>}
+                  </td>
                   <td className="n">{fmtQty(p.purchaseQty)}</td>
                   <td className="n">{fmtQty(p.salesQty)}</td>
                   <td className="n">{fmtQty(p.returnQty)}</td>
-                  <td className={`n avail ${p.availableQty < 0 ? "neg" : p.availableQty === 0 ? "zero" : ""}`}>
-                    {fmtQty(p.availableQty)}
-                  </td>
-                  <td className="n" title={mismatch ? "Differs from the calculated available quantity" : ""}>
-                    {fmtQty(p.storedQty)}
-                    {mismatch && <span className="flag">differs</span>}
-                  </td>
+                  <td className="n">{fmtQty(p.storedQty)}</td>
                 </tr>
               );
             })}
             {!loading && !error && items.length === 0 && (
               <tr>
-                <td colSpan={8} className="empty">
+                <td colSpan={7} className="empty">
                   No products match these filters. Clear a filter or check the barcode.
                 </td>
               </tr>
             )}
             {loading && items.length === 0 && (
-              <tr><td colSpan={8} className="empty">Loading stock…</td></tr>
+              <tr><td colSpan={7} className="empty">Loading stock…</td></tr>
             )}
           </tbody>
         </table>
@@ -230,12 +224,10 @@ const css = `
 .psr button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .psr button:disabled { opacity: .45; cursor: not-allowed; }
 .psr-actions { display: flex; gap: 8px; }
-.psr-totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+.psr-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; }
 .psr-totals div { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
 .psr-totals dt { font-size: 13px; color: var(--muted); }
 .psr-totals dd { margin: 2px 0 0; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.psr-totals .hero { background: var(--accent); border-color: var(--accent); }
-.psr-totals .hero dt, .psr-totals .hero dd { color: #fff; }
 .psr-error { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--bad); color: var(--bad); background: #fdf0ef; border-radius: 8px; }
 .psr-tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-top: 16px; }
 .psr-tablewrap[aria-busy="true"] { opacity: .6; }
@@ -244,12 +236,8 @@ const css = `
 .psr th { background: #eef2f2; font-weight: 600; white-space: nowrap; position: sticky; top: 0; }
 .psr .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .psr .sub { display: block; font-size: 12px; color: var(--muted); }
-.psr .avail { font-weight: 700; }
-.psr .avail.neg { color: var(--bad); }
-.psr .avail.zero { color: var(--warn); }
-.psr .flag { display: block; font-size: 11px; color: var(--warn); }
 .psr .empty { text-align: center; color: var(--muted); padding: 32px; }
 .psr-pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 14px; color: var(--muted); font-size: 14px; }
 .psr-pager span { margin-right: auto; }
-@media (max-width: 700px) { .psr { padding: 14px; } .psr-totals { grid-template-columns: repeat(2, 1fr); } .psr-filters label { width: 100%; } }
+@media (max-width: 700px) { .psr { padding: 14px; } .psr-filters label { width: 100%; } }
 `;
