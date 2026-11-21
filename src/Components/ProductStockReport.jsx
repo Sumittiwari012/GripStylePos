@@ -1,0 +1,219 @@
+import { useCallback, useEffect, useState } from "react";
+
+// Set VITE_API_URL in .env (e.g. VITE_API_URL=https://localhost:7001).
+// For Create React App use process.env.REACT_APP_API_URL instead.
+const API_BASE = import.meta.env?.VITE_API_URL ?? "https://gripstyleapi.runasp.net";
+
+const EMPTY_FILTERS = { categoryId: "", subCategoryId: "", barcode: "", search: "" };
+const fmtQty = (n) => Number(n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const fmtMoney = (n) =>
+  Number(n ?? 0).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+
+export default function ProductStockReport() {
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [applied, setApplied] = useState(EMPTY_FILTERS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(
+    async (signal) => {
+      setLoading(true);
+      setError("");
+      try {
+        const params = new URLSearchParams({ page, pageSize });
+        Object.entries(applied).forEach(([k, v]) => v.trim() && params.set(k, v.trim()));
+
+        const res = await fetch(`${API_BASE}/api/ProductStockReport?${params}`, { signal });
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        setData(await res.json());
+      } catch (e) {
+        if (e.name !== "AbortError") {
+          setError(`Could not load the stock report. ${e.message}. Check that the API is running and allows requests from this site (CORS).`);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [applied, page, pageSize]
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  const setField = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }));
+
+  const applyFilters = (e) => {
+    e.preventDefault();
+    setPage(1);
+    setApplied(filters);
+  };
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setApplied(EMPTY_FILTERS);
+    setPage(1);
+  };
+
+  const items = data?.items ?? [];
+  const totals = data?.totals;
+
+  return (
+    <div className="psr">
+      <style>{css}</style>
+
+      <header className="psr-head">
+        <h1>Stock report</h1>
+        <p>Purchases, sales, returns and what is on hand for each product.</p>
+      </header>
+
+      <form className="psr-filters" onSubmit={applyFilters}>
+        <label>
+          Category ID
+          <input type="number" min="1" value={filters.categoryId} onChange={setField("categoryId")} />
+        </label>
+        <label>
+          Sub-category ID
+          <input type="number" min="1" value={filters.subCategoryId} onChange={setField("subCategoryId")} />
+        </label>
+        <label>
+          Barcode
+          <input value={filters.barcode} onChange={setField("barcode")} placeholder="Scan or type" autoFocus />
+        </label>
+        <label className="grow">
+          Product name or code
+          <input value={filters.search} onChange={setField("search")} />
+        </label>
+        <div className="psr-actions">
+          <button type="submit" className="primary">Show stock</button>
+          <button type="button" onClick={clearFilters}>Clear filters</button>
+        </div>
+      </form>
+
+      {totals && (
+        <dl className="psr-totals" aria-label="Totals for this page">
+          <div><dt>Purchased</dt><dd>{fmtQty(totals.purchaseQty)}</dd></div>
+          <div><dt>Sold</dt><dd>{fmtQty(totals.salesQty)}</dd></div>
+          <div><dt>Returned</dt><dd>{fmtQty(totals.returnQty)}</dd></div>
+          <div className="hero"><dt>Available</dt><dd>{fmtQty(totals.availableQty)}</dd></div>
+        </dl>
+      )}
+
+      {error && <div className="psr-error" role="alert">{error}</div>}
+
+      <div className="psr-tablewrap" aria-busy={loading}>
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Category</th>
+              <th className="n">Opening</th>
+              <th className="n">Purchased</th>
+              <th className="n">Sold</th>
+              <th className="n">Returned</th>
+              <th className="n">Available</th>
+              <th className="n">In stock table</th>
+              <th className="n">Sales value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((p) => {
+              const mismatch = Math.abs(p.availableQty - p.storedQty) > 0.001;
+              return (
+                <tr key={p.productId}>
+                  <td>
+                    <strong>{p.productName}</strong>
+                    <span className="sub">{p.barcode}{p.productCode ? ` (${p.productCode})` : ""}</span>
+                  </td>
+                  <td>
+                    {p.categoryName ?? p.categoryId}
+                    <span className="sub">{p.subCategoryName ?? p.subCategoryId}</span>
+                  </td>
+                  <td className="n">{fmtQty(p.openingStock)}</td>
+                  <td className="n">{fmtQty(p.purchaseQty)}</td>
+                  <td className="n">{fmtQty(p.salesQty)}</td>
+                  <td className="n">{fmtQty(p.returnQty)}</td>
+                  <td className={`n avail ${p.availableQty < 0 ? "neg" : p.availableQty === 0 ? "zero" : ""}`}>
+                    {fmtQty(p.availableQty)}
+                  </td>
+                  <td className="n" title={mismatch ? "Differs from the calculated available quantity" : ""}>
+                    {fmtQty(p.storedQty)}
+                    {mismatch && <span className="flag">differs</span>}
+                  </td>
+                  <td className="n">{fmtMoney(p.salesAmount)}</td>
+                </tr>
+              );
+            })}
+            {!loading && !error && items.length === 0 && (
+              <tr>
+                <td colSpan={9} className="empty">
+                  No products match these filters. Clear a filter or check the barcode.
+                </td>
+              </tr>
+            )}
+            {loading && items.length === 0 && (
+              <tr><td colSpan={9} className="empty">Loading stock…</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {data && (
+        <footer className="psr-pager">
+          <span>
+            {data.totalCount} products · page {data.page} of {Math.max(data.totalPages, 1)}
+          </span>
+          <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
+            {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n} per page</option>)}
+          </select>
+          <button disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>Previous</button>
+          <button disabled={page >= data.totalPages || loading} onClick={() => setPage((p) => p + 1)}>Next</button>
+        </footer>
+      )}
+    </div>
+  );
+}
+
+const css = `
+.psr { --ink:#1b2a2f; --muted:#5d6b70; --line:#d9e0e2; --bg:#f6f8f8; --card:#fff; --accent:#0f6b63; --bad:#b3261e; --warn:#8a5a00;
+  font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); min-height: 100vh; padding: 24px; box-sizing: border-box; }
+.psr * { box-sizing: border-box; }
+.psr-head h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+.psr-head p { margin: 4px 0 20px; color: var(--muted); }
+.psr-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+.psr-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); width: 150px; }
+.psr-filters label.grow { flex: 1; min-width: 200px; width: auto; }
+.psr input, .psr select { height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; color: var(--ink); background: #fff; }
+.psr input:focus-visible, .psr select:focus-visible, .psr button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.psr button { height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font-size: 14px; cursor: pointer; }
+.psr button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.psr button:disabled { opacity: .45; cursor: not-allowed; }
+.psr-actions { display: flex; gap: 8px; }
+.psr-totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+.psr-totals div { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
+.psr-totals dt { font-size: 13px; color: var(--muted); }
+.psr-totals dd { margin: 2px 0 0; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.psr-totals .hero { background: var(--accent); border-color: var(--accent); }
+.psr-totals .hero dt, .psr-totals .hero dd { color: #fff; }
+.psr-error { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--bad); color: var(--bad); background: #fdf0ef; border-radius: 8px; }
+.psr-tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-top: 16px; }
+.psr-tablewrap[aria-busy="true"] { opacity: .6; }
+.psr table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.psr th, .psr td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.psr th { background: #eef2f2; font-weight: 600; white-space: nowrap; position: sticky; top: 0; }
+.psr .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.psr .sub { display: block; font-size: 12px; color: var(--muted); }
+.psr .avail { font-weight: 700; }
+.psr .avail.neg { color: var(--bad); }
+.psr .avail.zero { color: var(--warn); }
+.psr .flag { display: block; font-size: 11px; color: var(--warn); }
+.psr .empty { text-align: center; color: var(--muted); padding: 32px; }
+.psr-pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 14px; color: var(--muted); font-size: 14px; }
+.psr-pager span { margin-right: auto; }
+@media (max-width: 700px) { .psr { padding: 14px; } .psr-totals { grid-template-columns: repeat(2, 1fr); } .psr-filters label { width: 100%; } }
+`;
