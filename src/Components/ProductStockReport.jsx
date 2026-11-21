@@ -6,8 +6,6 @@ const API_BASE = import.meta.env?.VITE_API_URL ?? "https://gripstyleapi.runasp.n
 
 const EMPTY_FILTERS = { categoryId: "", subCategoryId: "", barcode: "", search: "" };
 const fmtQty = (n) => Number(n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
-const fmtMoney = (n) =>
-  Number(n ?? 0).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
 export default function ProductStockReport() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -158,7 +156,6 @@ export default function ProductStockReport() {
               <th className="n">Returned</th>
               <th className="n">Available</th>
               <th className="n">In stock table</th>
-              <th className="n">Sales value</th>
             </tr>
           </thead>
           <tbody>
@@ -185,19 +182,18 @@ export default function ProductStockReport() {
                     {fmtQty(p.storedQty)}
                     {mismatch && <span className="flag">differs</span>}
                   </td>
-                  <td className="n">{fmtMoney(p.salesAmount)}</td>
                 </tr>
               );
             })}
             {!loading && !error && items.length === 0 && (
               <tr>
-                <td colSpan={9} className="empty">
+                <td colSpan={8} className="empty">
                   No products match these filters. Clear a filter or check the barcode.
                 </td>
               </tr>
             )}
             {loading && items.length === 0 && (
-              <tr><td colSpan={9} className="empty">Loading stock…</td></tr>
+              <tr><td colSpan={8} className="empty">Loading stock…</td></tr>
             )}
           </tbody>
         </table>
