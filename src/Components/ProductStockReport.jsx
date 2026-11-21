@@ -14,6 +14,8 @@ export default function ProductStockReport() {
   const [applied, setApplied] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [categories, setCategories] = useState([]);
+  const [subCategories, setSubCategories] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -46,6 +48,38 @@ export default function ProductStockReport() {
     return () => controller.abort();
   }, [load]);
 
+  useEffect(() => {
+    fetch(`${API_BASE}/api/ProductStockReport/categories`)
+      .then((r) => r.json())
+      .then(setCategories)
+      .catch(() => setCategories([]));
+  }, []);
+
+  useEffect(() => {
+    if (!filters.categoryId) {
+      setSubCategories([]);
+      return;
+    }
+    fetch(`${API_BASE}/api/ProductStockReport/subcategories?categoryId=${filters.categoryId}`)
+      .then((r) => r.json())
+      .then(setSubCategories)
+      .catch(() => setSubCategories([]));
+  }, [filters.categoryId]);
+
+  const pickCategory = (e) => {
+    const next = { ...filters, categoryId: e.target.value, subCategoryId: "" };
+    setFilters(next);
+    setApplied(next);
+    setPage(1);
+  };
+
+  const pickSubCategory = (e) => {
+    const next = { ...filters, subCategoryId: e.target.value };
+    setFilters(next);
+    setApplied(next);
+    setPage(1);
+  };
+
   const setField = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }));
 
   const applyFilters = (e) => {
@@ -74,12 +108,18 @@ export default function ProductStockReport() {
 
       <form className="psr-filters" onSubmit={applyFilters}>
         <label>
-          Category ID
-          <input type="number" min="1" value={filters.categoryId} onChange={setField("categoryId")} />
+          Category
+          <select value={filters.categoryId} onChange={pickCategory}>
+            <option value="">All categories</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
         </label>
         <label>
-          Sub-category ID
-          <input type="number" min="1" value={filters.subCategoryId} onChange={setField("subCategoryId")} />
+          Sub-category
+          <select value={filters.subCategoryId} onChange={pickSubCategory} disabled={!filters.categoryId}>
+            <option value="">{filters.categoryId ? "All sub-categories" : "Pick a category first"}</option>
+            {subCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
         </label>
         <label>
           Barcode
@@ -186,7 +226,7 @@ const css = `
 .psr-head h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
 .psr-head p { margin: 4px 0 20px; color: var(--muted); }
 .psr-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
-.psr-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); width: 150px; }
+.psr-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); width: 190px; }
 .psr-filters label.grow { flex: 1; min-width: 200px; width: auto; }
 .psr input, .psr select { height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; color: var(--ink); background: #fff; }
 .psr input:focus-visible, .psr select:focus-visible, .psr button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
