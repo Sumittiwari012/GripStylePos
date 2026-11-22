@@ -183,7 +183,7 @@ export default function ProductStockReport() {
           <div>
             <strong>Opening stock</strong>
             <span className="sub">
-              For products with no purchases: opening = in stock table + sold − returned. Applies to: {scopeLabel}.
+              For products with no purchase entry: opening = in stock table + sold − returned. Applies to: {scopeLabel}.
             </span>
           </div>
           <div className="psr-actions">
@@ -214,7 +214,7 @@ export default function ProductStockReport() {
 
             {opening.result.productsWithNoPurchases === 0 && (
               <p className="sub">
-                No products matched. Every product in this scope has purchase entries, and this update only applies to products with no purchases.
+                No products matched. Every product in this scope has a purchase entry, and this update only applies to products with no purchase entry at all.
               </p>
             )}
             {opening.result.updated === 0 && opening.result.skippedNegative > 0 && (
