@@ -1,19 +1,99 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, fmtDate, qty, ROUTE_BASE, session } from "./api";
-import { ApprovalTag, Badge, Card, ErrorBox, HistoryTables, Loading, Shell } from "./ui";
-import { useLoad } from "./ui";
+import { ApprovalTag, Badge, Card, ErrorBox, Loading, Shell, Stat, useLoad } from "./ui";
 
-// Owner route:   /audit/owner/:auditId/report
+// Owner route:    /audit/owner/:auditId/report
 // Incharge route: /audit/incharge/report  (audit comes from the login session)
+//
+// One list, grouped by category > sub category. For every product:
+//   Current stock         = opening stock + purchase - sales + customer return
+//   Physically counted    = what the manager counted
+//   Sales after verified  = sales made after the product was counted
+//   Return after verified = customer returns made after the product was counted
+//   Remarks / Status      = reason + note, and the count status
+
+const isCounted = (l) => !!l.status && l.status !== "Pending" && l.status !== "OnHold";
+const sum = (arr, f) => arr.reduce((n, x) => n + (Number(f(x)) || 0), 0);
+
+// The server sends sold out / negative / audited separately. Put them into ONE list.
+function mergeGroups(...lists) {
+  const cats = new Map();
+  for (const g of lists.flat()) {
+    if (!cats.has(g.categoryName)) cats.set(g.categoryName, new Map());
+    const subs = cats.get(g.categoryName);
+    for (const sg of g.subCategories) {
+      if (!subs.has(sg.subCategoryName)) subs.set(sg.subCategoryName, []);
+      subs.get(sg.subCategoryName).push(...sg.items);
+    }
+  }
+  return [...cats.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([categoryName, subs]) => ({
+      categoryName,
+      subCategories: [...subs.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([subCategoryName, items]) => ({
+          subCategoryName,
+          items: items.sort((a, b) => a.productName.localeCompare(b.productName)),
+        })),
+    }));
+}
+
 export default function ReportPage({ who }) {
   const params = useParams();
   const s = session.get();
   const auditId = who === "owner" ? params.auditId : s.audit.id;
-  const back = who === "owner" ? { to: `${ROUTE_BASE}/owner/${auditId}`, label: "Audit" } : { to: `${ROUTE_BASE}/incharge`, label: "Audit" };
+  const back =
+    who === "owner"
+      ? { to: `${ROUTE_BASE}/owner/${auditId}`, label: "Audit" }
+      : { to: `${ROUTE_BASE}/incharge`, label: "Audit" };
 
-  const [history, setHistory] = useState(true);
-  const { data: r, error, loading, reload } = useLoad(() => api(`/${auditId}/report?includeHistory=${history}`, { who }), [auditId, who, history]);
+  const [q, setQ] = useState("");
+  const [only, setOnly] = useState("all"); // all | counted | notCounted
+  const [expand, setExpand] = useState({ open: false, n: 0 });
+
+  const { data: r, error, loading, reload } = useLoad(
+    () => api(`/${auditId}/report?includeHistory=false`, { who }),
+    [auditId, who]
+  );
+
+  const groups = useMemo(
+    () => (r ? mergeGroups(r.audited, r.negativeStock, r.soldOut) : []),
+    [r]
+  );
+
+  const all = useMemo(() => groups.flatMap((g) => g.subCategories.flatMap((sg) => sg.items)), [groups]);
+
+  const totals = useMemo(() => {
+    const counted = all.filter(isCounted);
+    return {
+      products: all.length,
+      counted: counted.length,
+      notCounted: all.length - counted.length,
+      current: sum(all, (l) => l.systemQty),
+      physical: sum(counted, (l) => l.physicalQty),
+      soldAfter: sum(counted, (l) => l.soldAfterCountQty),
+      returnAfter: sum(counted, (l) => l.returnAfterCountQty),
+    };
+  }, [all]);
+
+  const term = q.trim().toLowerCase();
+  const view = useMemo(() => {
+    const keep = (l) =>
+      (only === "all" || (only === "counted") === isCounted(l)) &&
+      (!term || l.productName.toLowerCase().includes(term) || (l.barcode || "").toLowerCase().includes(term));
+    return groups
+      .map((g) => ({
+        ...g,
+        subCategories: g.subCategories
+          .map((sg) => ({ ...sg, items: sg.items.filter(keep) }))
+          .filter((sg) => sg.items.length > 0),
+      }))
+      .filter((g) => g.subCategories.length > 0);
+  }, [groups, term, only]);
+
+  const shown = view.reduce((n, g) => n + g.subCategories.reduce((m, sg) => m + sg.items.length, 0), 0);
 
   return (
     <Shell
@@ -24,9 +104,7 @@ export default function ReportPage({ who }) {
       back={back}
       actions={
         <>
-          <label className="au-check">
-            <input type="checkbox" checked={history} onChange={(e) => setHistory(e.target.checked)} /> Include purchase and sales records
-          </label>
+          <button className="au-btn" onClick={reload}>Refresh</button>
           <button className="au-btn" onClick={() => window.print()}>Print</button>
         </>
       }
@@ -46,126 +124,97 @@ export default function ReportPage({ who }) {
             {r.approval.approvalNote && <div className="au-muted">Incharge's note: {r.approval.approvalNote}</div>}
           </div>
 
-          <Card title="Discrepancy by category">
-            <div className="au-scroll">
-              <table className="au-table">
-                <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th className="au-num">Audited</th>
-                    <th className="au-num">Matched</th>
-                    <th className="au-num">Short</th>
-                    <th className="au-num">Short qty</th>
-                    <th className="au-num">Excess</th>
-                    <th className="au-num">Excess qty</th>
-                    <th className="au-num">On hold</th>
-                    <th className="au-num">Not counted</th>
-                    <th className="au-num">Sold out</th>
-                    <th className="au-num">Negative</th>
-                    <th className="au-num">Total discrepancy</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.categorySummary.map((c) => (
-                    <tr key={c.categoryName}>
-                      <td>{c.categoryName}</td>
-                      <td className="au-num">{c.auditedItems}</td>
-                      <td className="au-num">{c.matched}</td>
-                      <td className="au-num">{c.short}</td>
-                      <td className="au-num au-neg">{qty(c.shortQty)}</td>
-                      <td className="au-num">{c.excess}</td>
-                      <td className="au-num au-pos">{qty(c.excessQty)}</td>
-                      <td className="au-num">{c.onHold}</td>
-                      <td className="au-num">{c.notCounted}</td>
-                      <td className="au-num">{c.soldOutItems}</td>
-                      <td className="au-num">{c.negativeStockItems}</td>
-                      <td className="au-num"><strong>{qty(c.totalDiscrepancyQty)}</strong></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <Card title="Summary">
+            <div className="au-stats">
+              <Stat label="Products" value={totals.products} />
+              <Stat label="Counted" value={totals.counted} tone="ok" />
+              <Stat label="Not counted" value={totals.notCounted} tone="hold" />
+              <Stat label="Current stock" value={qty(totals.current)} />
+              <Stat label="Physically counted" value={qty(totals.physical)} />
+              <Stat label="Sales after verified" value={qty(totals.soldAfter)} />
+              <Stat label="Return after verified" value={qty(totals.returnAfter)} />
             </div>
           </Card>
 
-          <Section title="Audited products" groups={r.audited} audited />
-          <Section title="Negative stock (sold more than purchased)" note="These are data problems. Check the purchase and sales records." groups={r.negativeStock} audited />
-          <Section title="Sold out in system" note="If a manager found any of these in the shop, the quantity and note are shown." groups={r.soldOut} audited />
+          <Card title="Products">
+            <div className="au-row" style={{ margin: "0 0 .8rem", alignItems: "center" }}>
+              <input
+                className="au-input au-input-sm"
+                style={{ flex: 1, minWidth: 200 }}
+                placeholder="Search product or barcode"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                aria-label="Search product or barcode"
+              />
+              <div className="au-seg">
+                {[["all", "All"], ["counted", "Counted"], ["notCounted", "Not counted"]].map(([k, l]) => (
+                  <button key={k} className={only === k ? "on" : ""} onClick={() => setOnly(k)}>{l}</button>
+                ))}
+              </div>
+              <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: true, n: e.n + 1 }))}>Expand all</button>
+              <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: false, n: e.n + 1 }))}>Collapse all</button>
+            </div>
+
+            {shown === 0 && <p className="au-muted">{term || only !== "all" ? "No product matches." : "No products."}</p>}
+            {view.map((g) => (
+              <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} />
+            ))}
+          </Card>
         </>
       )}
     </Shell>
   );
 }
 
-function Section({ title, note, groups, audited }) {
-  const total = groups.reduce((n, g) => n + g.itemCount, 0);
+function CategoryGroup({ g, open }) {
+  const items = g.subCategories.flatMap((sg) => sg.items);
   return (
-    <Card title={`${title} · ${total}`}>
-      {note && <p className="au-muted">{note}</p>}
-      {total === 0 && <p className="au-muted">None.</p>}
-      {groups.map((g) => (
-        <details key={g.categoryName} className="au-group">
-          <summary>{g.categoryName} <span className="au-muted">({g.itemCount})</span></summary>
-          {g.subCategories.map((sg) => (
-            <div key={sg.subCategoryName} className="au-subgroup">
-              <h3>{sg.subCategoryName} <span className="au-muted">({sg.itemCount})</span></h3>
-              <div className="au-scroll">
-                <table className="au-table au-table-tight">
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th className="au-num">Purchased</th>
-                      <th className="au-num">Returned</th>
-                      <th className="au-num">Sold</th>
-                      <th className="au-num">System</th>
-                      {audited && <><th className="au-num">Counted</th><th className="au-num">Variance</th><th>Status</th><th>Reason / note</th><th>By</th></>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sg.items.map((l) => <Line key={`${l.productId}-${l.barcode}`} l={l} audited={audited} />)}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </details>
+    <details className="au-group" open={open}>
+      <summary>
+        {g.categoryName}
+        <span className="au-chip">{items.length} products</span>
+      </summary>
+      {g.subCategories.map((sg) => (
+        <div key={sg.subCategoryName} className="au-subgroup">
+          <h3>{sg.subCategoryName} <span className="au-muted">({sg.items.length})</span></h3>
+          <div className="au-scroll">
+            <table className="au-table au-table-tight">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th className="au-num">Current stock</th>
+                  <th className="au-num">Physically counted</th>
+                  <th className="au-num">Sales after verified</th>
+                  <th className="au-num">Return after verified</th>
+                  <th>Remarks</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sg.items.map((l) => <Line key={`${l.productId}-${l.barcode}`} l={l} />)}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ))}
-    </Card>
+    </details>
   );
 }
 
-function Line({ l, audited }) {
-  const [open, setOpen] = useState(false);
-  const cols = audited ? 10 : 5;
-  // sold out / negative lines nobody counted arrive with no status: treat them as Pending
-  const status = l.status || "Pending";
-  const counted = status !== "Pending";
+function Line({ l }) {
+  const counted = isCounted(l);
   return (
-    <>
-      <tr>
-        <td>
-          {l.productName}
-          <small className="au-block au-muted">{l.barcode}</small>
-          {l.history && <button className="au-link" onClick={() => setOpen(!open)}>{open ? "Hide records" : "Show records"}</button>}
-        </td>
-        <td className="au-num">{qty(l.purchasedQty)}</td>
-        <td className="au-num">{qty(l.purchaseReturnedQty)}</td>
-        <td className="au-num">{qty(l.soldQty)}</td>
-        <td className="au-num">{qty(l.systemQty)}</td>
-        {audited && (
-          <>
-            <td className="au-num">{counted ? qty(l.physicalQty) : "–"}</td>
-            <td className={`au-num ${counted && l.varianceQty < 0 ? "au-neg" : counted && l.varianceQty > 0 ? "au-pos" : ""}`}>{counted ? qty(l.varianceQty) : "–"}</td>
-            <td><Badge status={status} /></td>
-            <td className="au-note">{[l.reasonCode, l.note].filter(Boolean).join(" · ") || "–"}</td>
-            <td>{l.verifiedBy || "–"}</td>
-          </>
-        )}
-      </tr>
-      {open && (
-        <tr>
-          <td colSpan={cols}><HistoryTables history={l.history} /></td>
-        </tr>
-      )}
-    </>
+    <tr>
+      <td>
+        {l.productName}
+        <small className="au-block au-muted">{l.barcode}</small>
+      </td>
+      <td className="au-num">{qty(l.systemQty)}</td>
+      <td className="au-num">{counted ? qty(l.physicalQty) : "–"}</td>
+      <td className="au-num">{counted && l.soldAfterCountQty != null ? qty(l.soldAfterCountQty) : "–"}</td>
+      <td className="au-num">{counted && l.returnAfterCountQty != null ? qty(l.returnAfterCountQty) : "–"}</td>
+      <td className="au-note">{[l.reasonCode, l.note].filter(Boolean).join(" · ") || "–"}</td>
+      <td><Badge status={l.status || "Pending"} /></td>
+    </tr>
   );
 }
