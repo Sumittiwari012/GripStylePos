@@ -1,684 +1,235 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend
-} from 'recharts';
+import { useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import { api, fmtDate, qty, ROUTE_BASE, session } from "./api";
+import { ApprovalTag, Badge, Card, ErrorBox, HistoryTables, Loading, Shell, Stat, useLoad } from "./ui";
 
-const API_BASE_URL = 'https://gripstyleapi.runasp.net';
+// Owner route:    /audit/owner/:auditId/report
+// Incharge route: /audit/incharge/report  (audit comes from the login session)
+//
+// Every product shows only three figures:
+//   Current stock        = opening stock + purchase - sold + return
+//   Physically counted   = what the manager counted
+//   Sold after counting  = sales made after the product was counted
 
-const METHOD_META = {
-  Cash: { key: 'cash', color: '#28a745' },
-  Card: { key: 'card', color: '#007bff' },
-  UPI: { key: 'upi', color: '#ffc107' },
-  Wallet: { key: 'wallet', color: '#6f42c1' }
+const TABS = [
+  ["audited", "Audited products", "audited"],
+  ["negative", "Negative stock", "negativeStock"],
+  ["soldOut", "Sold out in system", "soldOut"],
+];
+
+const TAB_NOTE = {
+  audited: "Products that have stock in the system.",
+  negative: "Current stock is below zero. Check the purchase and sales records.",
+  soldOut: "Current stock is zero. If a manager found the product in the shop, the counted quantity is shown.",
 };
 
-const formatDateForApi = (date) => {
-  // yyyy-MM-dd — sent as a plain date, backend treats it as date-only
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
+const isCounted = (l) => !!l.status && l.status !== "Pending" && l.status !== "OnHold";
+const sum = (arr, f) => arr.reduce((n, x) => n + (Number(f(x)) || 0), 0);
+const flat = (groups) => groups.flatMap((g) => g.subCategories.flatMap((sg) => sg.items));
 
-const todayStr = () => formatDateForApi(new Date());
+export default function ReportPage({ who }) {
+  const params = useParams();
+  const s = session.get();
+  const auditId = who === "owner" ? params.auditId : s.audit.id;
+  const back =
+    who === "owner"
+      ? { to: `${ROUTE_BASE}/owner/${auditId}`, label: "Audit" }
+      : { to: `${ROUTE_BASE}/incharge`, label: "Audit" };
 
-// The Trend chart leaves Cash out
-const CHART_METHODS = Object.entries(METHOD_META).filter(([label]) => label !== 'Cash');
+  const [history, setHistory] = useState(true);
+  const [tab, setTab] = useState("audited");
+  const [q, setQ] = useState("");
+  const [only, setOnly] = useState("all"); // all | counted | notCounted
+  const [expand, setExpand] = useState({ open: false, n: 0 });
 
-function Report() {
-  const [startDate, setStartDate] = useState(todayStr());
-  const [endDate, setEndDate] = useState(todayStr());
-  const [reportData, setReportData] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [chartType, setChartType] = useState('bar'); // 'bar' | 'line'
+  const { data: r, error, loading, reload } = useLoad(
+    () => api(`/${auditId}/report?includeHistory=${history}`, { who }),
+    [auditId, who, history]
+  );
 
-  const [settling, setSettling] = useState(false);
-  const [settleMessage, setSettleMessage] = useState('');
-
-  // "none"      → no settlement ever requested this session, button is red and clickable
-  // "pending"   → a settlement request is in flight, button gray & locked
-  // "completed" → already settled, button green & locked
-  const [settlementStatus, setSettlementStatus] = useState('none');
-
-  const [checkingStatus, setCheckingStatus] = useState(true);
-
-  // ── Petty cash for the current session (read-only) ──
-  const [pettyCashInfo, setPettyCashInfo] = useState(null);
-  const [pettyCashLoading, setPettyCashLoading] = useState(true);
-  const [pettyCashError, setPettyCashError] = useState('');
-
-  // ── Settlement status check ──
-  useEffect(() => {
-    const checkSettlementStatus = async () => {
-      const counterId = localStorage.getItem('counterId');
-      if (!counterId) {
-        setCheckingStatus(false);
-        return;
-      }
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/SettlementRequest/status/${counterId}`);
-
-        if (!response.ok) {
-          setSettlementStatus('none');
-          return;
-        }
-
-        const data = await response.json();
-
-        // API returns { status: "none" | "pending" | "completed" }
-        if (data.status === 'pending' || data.status === 'completed') {
-          setSettlementStatus(data.status);
-        } else {
-          setSettlementStatus('none');
-        }
-      } catch (err) {
-        console.error('Settlement status check error:', err);
-      } finally {
-        setCheckingStatus(false);
-      }
+  const totals = useMemo(() => {
+    if (!r) return null;
+    const all = [...flat(r.audited), ...flat(r.negativeStock), ...flat(r.soldOut)];
+    const counted = all.filter(isCounted);
+    return {
+      products: all.length,
+      counted: counted.length,
+      notCounted: all.length - counted.length,
+      current: sum(all, (l) => l.systemQty),
+      physical: sum(counted, (l) => l.physicalQty),
+      soldAfter: sum(counted, (l) => l.soldAfterCountQty),
     };
+  }, [r]);
 
-    checkSettlementStatus();
-  }, []);
+  const tabInfo = TABS.find((t) => t[0] === tab);
+  const groups = r ? r[tabInfo[2]] : [];
+  const term = q.trim().toLowerCase();
 
-  // ── Fetch this session's petty cash on load (read-only display) ──
-  useEffect(() => {
-    const fetchPettyCash = async () => {
-      const counterId = localStorage.getItem('counterId');
-      if (!counterId) {
-        setPettyCashLoading(false);
-        return;
-      }
-      setPettyCashLoading(true);
-      setPettyCashError('');
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/PettyCash/LatestPettyCashByCounterId?CounterId=${counterId}`);
-        const data = await response.json();
+  // apply search + counted filter, drop empty sub categories / categories
+  const view = useMemo(() => {
+    const keep = (l) =>
+      (only === "all" || (only === "counted") === isCounted(l)) &&
+      (!term || l.productName.toLowerCase().includes(term) || (l.barcode || "").toLowerCase().includes(term));
+    return groups
+      .map((g) => ({
+        ...g,
+        subCategories: g.subCategories
+          .map((sg) => ({ ...sg, items: sg.items.filter(keep) }))
+          .filter((sg) => sg.items.length > 0),
+      }))
+      .filter((g) => g.subCategories.length > 0);
+  }, [groups, term, only]);
 
-        if (!response.ok) {
-          setPettyCashError(data.message || 'Could not load petty cash.');
-          return;
-        }
-
-        setPettyCashInfo(data);
-      } catch (err) {
-        console.error('Petty cash check error:', err);
-        setPettyCashError('Could not reach the server.');
-      } finally {
-        setPettyCashLoading(false);
-      }
-    };
-
-    fetchPettyCash();
-  }, []);
-
-  const handleSettlement = async () => {
-    if (settlementStatus !== 'none') return;
-
-    const confirmed = window.confirm('Are you sure you want to initiate settlement?');
-    if (!confirmed) return;
-
-    const counterId = localStorage.getItem('counterId');
-    if (!counterId) {
-      setSettleMessage('No counter ID found. Please log in again.');
-      return;
-    }
-
-    setSettling(true);
-    setSettleMessage('');
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/SettlementRequest/initiate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ counterId: Number(counterId) })
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        setSettleMessage(data.message || 'Could not initiate settlement.');
-        if (response.status === 400) {
-          setSettlementStatus('pending');
-        }
-        return;
-      }
-
-      setSettleMessage('Settlement request initiated.');
-      setSettlementStatus('pending');
-    } catch (err) {
-      console.error('Settlement error:', err);
-      setSettleMessage('Could not reach the server. Please try again.');
-    } finally {
-      setSettling(false);
-    }
-  };
-
-  const fetchReport = async (rangeStart = startDate, rangeEnd = endDate) => {
-    if (!rangeStart || !rangeEnd) {
-      setError('Please select both a start and end date.');
-      return;
-    }
-    if (new Date(rangeStart) > new Date(rangeEnd)) {
-      setError('Start date cannot be after end date.');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-    try {
-      const counterId = localStorage.getItem('counterId');
-      const params = new URLSearchParams({ startDate: rangeStart, endDate: rangeEnd });
-      if (counterId) {
-        params.set('counterId', counterId);
-      }
-      const url = `${API_BASE_URL}/DateRangeReport?${params}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`Request failed with status ${res.status}`);
-      }
-      const data = await res.json();
-      setReportData(data);
-    } catch (err) {
-      console.error('Failed to load report:', err);
-      setError(err.message || 'Failed to load report. Please try again.');
-      setReportData(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load today's report by default on mount
-  useEffect(() => {
-    fetchReport(todayStr(), todayStr());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Build one combined dataset: date -> { Card, UPI, Wallet } (Cash is not charted)
-  const chartData = useMemo(() => {
-    if (!reportData) return [];
-
-    const byDate = {};
-
-    CHART_METHODS.forEach(([label, meta]) => {
-      const section = reportData[meta.key];
-      if (!section?.invoices) return;
-
-      section.invoices.forEach((inv) => {
-        const dateKey = (inv.paymentDate || '').slice(0, 10); // yyyy-MM-dd
-        if (!byDate[dateKey]) {
-          byDate[dateKey] = { date: dateKey, Card: 0, UPI: 0, Wallet: 0 };
-        }
-        byDate[dateKey][label] += inv.amountPaid;
-      });
-    });
-
-    return Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
-  }, [reportData]);
-
-  const ChartComponent = chartType === 'line' ? LineChart : BarChart;
-
-  // Wallet payments are drawn from a balance that was already counted as
-  // revenue when the wallet was originally topped up, so including it again
-  // here would double-count that money. Subtract it from the raw API total.
-  const walletAmount = Number(reportData?.wallet?.totalAmount ?? 0);
-  const netTotalCollected = Number(reportData?.totalCollected ?? 0) - walletAmount;
-
-  const settlementButtonLabel = checkingStatus
-    ? 'Checking...'
-    : settling
-    ? 'Processing...'
-    : settlementStatus === 'pending'
-    ? 'Pending'
-    : settlementStatus === 'completed'
-    ? 'Settled'
-    : 'Settlement';
+  const shown = sum(view, (g) => g.subCategories.reduce((n, sg) => n + sg.items.length, 0));
 
   return (
-    <div style={styles.page}>
-      <div style={styles.headerRow}>
-        <h2 style={styles.pageTitle}>Payments Report</h2>
-        <button
-          style={{
-            ...styles.settlementButton,
-            ...(checkingStatus || settlementStatus === 'pending' ? styles.settlementButtonDisabled : {}),
-            ...(settlementStatus === 'completed' ? styles.settlementButtonSettled : {})
-          }}
-          onClick={handleSettlement}
-          disabled={settling || checkingStatus || settlementStatus !== 'none'}
-        >
-          {settlementButtonLabel}
-        </button>
-      </div>
-
-      {settleMessage && <p style={styles.settleMessage}>{settleMessage}</p>}
-
-      {/* ── Petty cash for this session (read-only) ── */}
-      {!pettyCashLoading && !pettyCashError && pettyCashInfo?.pettyCash != null && (
-        <div style={styles.pettyCashBanner}>
-          <span style={styles.pettyCashLabel}>Petty Cash</span>
-          <span style={styles.pettyCashAmount}>₹{Number(pettyCashInfo.pettyCash).toFixed(2)}</span>
-        </div>
-      )}
-      {pettyCashError && <p style={styles.errorText}>{pettyCashError}</p>}
-
-      {/* ── Date range controls ── */}
-      <div style={styles.filterBar}>
-        <div style={styles.filterField}>
-          <label style={styles.label}>From</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={styles.dateInput}
-          />
-        </div>
-        <div style={styles.filterField}>
-          <label style={styles.label}>To</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            style={styles.dateInput}
-          />
-        </div>
-        <button
-          style={styles.primaryButton}
-          onClick={() => fetchReport()}
-          disabled={isLoading}
-        >
-          {isLoading ? 'Loading...' : 'Get Report'}
-        </button>
-      </div>
-
-      {error && <p style={styles.errorText}>{error}</p>}
-
-      {reportData && (
+    <Shell
+      title={r ? `Report: ${r.auditName}` : "Report"}
+      subtitle={r ? `Code ${r.auditCode} · generated ${fmtDate(r.generatedAt)}` : undefined}
+      member={s?.member}
+      owner={s?.owner}
+      back={back}
+      actions={
         <>
-          {/* ── 4 payment method cards (Cash shows only its transaction count, no amount) ── */}
-          <div style={styles.summaryGrid}>
-            {Object.entries(METHOD_META).map(([label, meta]) => {
-              const section = reportData[meta.key];
-              return (
-                <div key={label} style={styles.summaryCard}>
-                  <div style={{ ...styles.summaryCardBar, backgroundColor: meta.color }} />
-                  <div style={styles.summaryCardBody}>
-                    <span style={styles.summaryCardLabel}>{label}</span>
-                    {label !== 'Cash' && (
-                      <span style={styles.summaryCardAmount}>
-                        ₹{Number(section?.totalAmount ?? 0).toFixed(2)}
-                      </span>
-                    )}
-                    <span style={styles.summaryCardCount}>
-                      {section?.transactionCount ?? 0} transaction{(section?.transactionCount ?? 0) === 1 ? '' : 's'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+          <label className="au-check">
+            <input type="checkbox" checked={history} onChange={(e) => setHistory(e.target.checked)} /> Include purchase and sales records
+          </label>
+          <button className="au-btn" onClick={reload}>Refresh</button>
+          <button className="au-btn" onClick={() => window.print()}>Print</button>
+        </>
+      }
+    >
+      <ErrorBox error={error} onRetry={reload} />
+      {loading && !r && <Loading what="Building the report…" />}
+      {r && (
+        <>
+          <div className="au-banner">
+            <div><Badge status={r.status} /> <ApprovalTag info={r.approval} /></div>
+            <div className="au-muted">
+              {r.approval.submittedAt && <>Submitted {fmtDate(r.approval.submittedAt)} by {r.approval.submittedBy || "a manager"}. </>}
+              {r.approval.approvedAt && <>Approved {fmtDate(r.approval.approvedAt)}. </>}
+              {r.approval.returnNote && <>Sent back with note: {r.approval.returnNote}</>}
+            </div>
+            {r.approval.submitNote && <div className="au-muted">Manager's note: {r.approval.submitNote}</div>}
+            {r.approval.approvalNote && <div className="au-muted">Incharge's note: {r.approval.approvalNote}</div>}
           </div>
 
-          <div style={styles.totalRow}>
-           
-          </div>
-          <p style={styles.totalNote}>
-            Excludes ₹{walletAmount.toFixed(2)} in wallet payments (already counted when the wallet was funded).
-          </p>
-
-          {/* ── Invoice-level breakdown per method (Cash shows only a count, no invoices) ── */}
-          <div style={styles.detailGrid}>
-            {Object.entries(METHOD_META).map(([label, meta]) => {
-              const section = reportData[meta.key];
-              const invoices = section?.invoices ?? [];
-              return (
-                <div key={label} style={styles.detailCard}>
-                  <h3 style={{ ...styles.detailTitle, color: meta.color }}>{label}</h3>
-                  {label === 'Cash' ? (
-                    // Cash: no invoice-level details, the card above already shows the count
-                    <p style={styles.emptyText}>
-                      {invoices.length === 0
-                        ? 'No transactions.'
-                        : `${invoices.length} cash transaction${invoices.length === 1 ? '' : 's'}.`}
-                    </p>
-                  ) : invoices.length === 0 ? (
-                    <p style={styles.emptyText}>No transactions.</p>
-                  ) : (
-                    <div style={styles.invoiceList}>
-                      {invoices.map((inv, idx) => (
-                        <div key={`${inv.invoiceNumber}-${idx}`} style={styles.invoiceRow}>
-                          <span style={styles.invoiceNumber}>{inv.invoiceNumber}</span>
-                          <span style={styles.invoiceDate}>
-                            {(inv.paymentDate || '').slice(0, 10)}
-                          </span>
-                          <span style={styles.invoiceAmount}>₹{Number(inv.amountPaid).toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* ── Graph toggle + single combined chart ── */}
-          <div style={styles.chartSection}>
-            <div style={styles.chartHeader}>
-              <h3 style={styles.sectionTitle}>Trend</h3>
-              <div style={styles.toggleGroup}>
-                <button
-                  style={{
-                    ...styles.toggleButton,
-                    ...(chartType === 'bar' ? styles.toggleButtonActive : {})
-                  }}
-                  onClick={() => setChartType('bar')}
-                >
-                  Bar
-                </button>
-                <button
-                  style={{
-                    ...styles.toggleButton,
-                    ...(chartType === 'line' ? styles.toggleButtonActive : {})
-                  }}
-                  onClick={() => setChartType('line')}
-                >
-                  Line
-                </button>
+          {totals && (
+            <Card title="Summary">
+              <div className="au-stats">
+                <Stat label="Products" value={totals.products} />
+                <Stat label="Counted" value={totals.counted} tone="ok" />
+                <Stat label="Not counted" value={totals.notCounted} tone="hold" />
+                <Stat label="Current stock" value={qty(totals.current)} />
+                <Stat label="Physically counted" value={qty(totals.physical)} />
+                <Stat label="Sold after counting" value={qty(totals.soldAfter)} />
               </div>
+              <p className="au-muted">
+                Current stock = opening stock + purchase − sold + return. Sold after counting = sales made after each
+                product was counted. Physically counted and sold after counting add up over counted products only.
+              </p>
+            </Card>
+          )}
+
+          <Card title="Products">
+            <nav className="au-tabs" role="tablist">
+              {TABS.map(([k, label, key]) => (
+                <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
+                  {label}<span className="au-chip">{sum(r[key], (g) => g.itemCount)}</span>
+                </button>
+              ))}
+            </nav>
+            <p className="au-muted">{TAB_NOTE[tab]}</p>
+
+            <div className="au-row" style={{ margin: ".5rem 0 .8rem", alignItems: "center" }}>
+              <input
+                className="au-input au-input-sm"
+                style={{ flex: 1, minWidth: 200 }}
+                placeholder="Search product or barcode"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                aria-label="Search product or barcode"
+              />
+              <div className="au-seg">
+                {[["all", "All"], ["counted", "Counted"], ["notCounted", "Not counted"]].map(([k, l]) => (
+                  <button key={k} className={only === k ? "on" : ""} onClick={() => setOnly(k)}>{l}</button>
+                ))}
+              </div>
+              <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: true, n: e.n + 1 }))}>Expand all</button>
+              <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: false, n: e.n + 1 }))}>Collapse all</button>
             </div>
 
-            {chartData.length === 0 ? (
-              <p style={styles.emptyText}>No data to chart for this range.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={360}>
-                <ChartComponent data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip formatter={(value) => `₹${Number(value).toFixed(2)}`} />
-                  <Legend />
-                  {CHART_METHODS.map(([label, meta]) =>
-                    chartType === 'line' ? (
-                      <Line
-                        key={label}
-                        type="monotone"
-                        dataKey={label}
-                        stroke={meta.color}
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                    ) : (
-                      <Bar key={label} dataKey={label} fill={meta.color} radius={[4, 4, 0, 0]} />
-                    )
-                  )}
-                </ChartComponent>
-              </ResponsiveContainer>
-            )}
-          </div>
+            {shown === 0 && <p className="au-muted">{term || only !== "all" ? "No product matches." : "None."}</p>}
+            {view.map((g) => (
+              <CategoryGroup key={`${tab}-${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} />
+            ))}
+          </Card>
         </>
       )}
-    </div>
+    </Shell>
   );
 }
 
-const styles = {
-  page: {
-    padding: '24px',
-    maxWidth: '1100px',
-    margin: '0 auto',
-    fontFamily: 'inherit'
-  },
-  headerRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '8px'
-  },
-  pageTitle: {
-    margin: 0,
-    fontSize: '1.5rem'
-  },
-  settlementButton: {
-    padding: '10px 20px',
-    backgroundColor: '#dc3545',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontWeight: 'bold',
-    fontSize: '0.9rem'
-  },
-  settlementButtonDisabled: {
-    backgroundColor: '#999',
-    cursor: 'not-allowed'
-  },
-  settlementButtonSettled: {
-    backgroundColor: '#28a745',
-    cursor: 'not-allowed'
-  },
-  settleMessage: {
-    fontSize: '0.9rem',
-    color: '#28a745',
-    marginBottom: '15px'
-  },
-  pettyCashBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    backgroundColor: '#fff8e1',
-    border: '1px solid #ffe082',
-    borderRadius: '6px',
-    padding: '10px 16px',
-    marginBottom: '15px',
-    fontSize: '0.9rem'
-  },
-  pettyCashLabel: {
-    color: '#666',
-    fontWeight: 'bold'
-  },
-  pettyCashAmount: {
-    fontWeight: 'bold',
-    color: '#222',
-    fontSize: '1rem'
-  },
-  filterBar: {
-    display: 'flex',
-    alignItems: 'flex-end',
-    gap: '15px',
-    backgroundColor: '#fff',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    padding: '15px',
-    marginBottom: '15px',
-    flexWrap: 'wrap'
-  },
-  filterField: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px'
-  },
-  label: {
-    fontSize: '0.8rem',
-    color: '#555',
-    fontWeight: 'bold'
-  },
-  dateInput: {
-    padding: '8px 10px',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    fontSize: '0.9rem'
-  },
-  primaryButton: {
-    padding: '10px 20px',
-    backgroundColor: '#007bff',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontWeight: 'bold',
-    fontSize: '0.95rem'
-  },
-  errorText: {
-    color: '#dc3545',
-    fontSize: '0.9rem',
-    marginBottom: '15px'
-  },
-  summaryGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    gap: '15px',
-    marginBottom: '15px'
-  },
-  summaryCard: {
-    display: 'flex',
-    backgroundColor: '#fff',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    overflow: 'hidden'
-  },
-  summaryCardBar: {
-    width: '6px'
-  },
-  summaryCardBody: {
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '14px 16px',
-    gap: '4px'
-  },
-  summaryCardLabel: {
-    fontSize: '0.85rem',
-    color: '#666',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: '0.03em'
-  },
-  summaryCardAmount: {
-    fontSize: '1.4rem',
-    fontWeight: 'bold',
-    color: '#222'
-  },
-  summaryCardCount: {
-    fontSize: '0.8rem',
-    color: '#888'
-  },
-  totalRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    padding: '14px 18px',
-    marginBottom: '20px',
-    fontSize: '1.1rem',
-    fontWeight: 'bold'
-  },
-  totalAmount: {
-    color: '#28a745'
-  },
-  totalNote: {
-    fontSize: '0.78rem',
-    color: '#888',
-    margin: '-14px 0 20px 0'
-  },
-  detailGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-    gap: '15px',
-    marginBottom: '25px'
-  },
-  detailCard: {
-    backgroundColor: '#fff',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    padding: '14px',
-    maxHeight: '280px',
-    display: 'flex',
-    flexDirection: 'column'
-  },
-  detailTitle: {
-    margin: '0 0 10px 0',
-    fontSize: '1rem',
-    borderBottom: '1px solid #eee',
-    paddingBottom: '8px'
-  },
-  invoiceList: {
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px'
-  },
-  invoiceRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '8px',
-    fontSize: '0.8rem',
-    color: '#444',
-    padding: '4px 0',
-    borderBottom: '1px dashed #f0f0f0'
-  },
-  invoiceNumber: {
-    flex: 2,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  },
-  invoiceDate: {
-    flex: 1,
-    color: '#999',
-    textAlign: 'center'
-  },
-  invoiceAmount: {
-    flex: 1,
-    textAlign: 'right',
-    fontWeight: 'bold'
-  },
-  emptyText: {
-    color: '#888',
-    fontStyle: 'italic',
-    fontSize: '0.85rem'
-  },
-  chartSection: {
-    backgroundColor: '#fff',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    padding: '18px'
-  },
-  chartHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '10px'
-  },
-  sectionTitle: {
-    margin: 0,
-    fontSize: '1.1rem'
-  },
-  toggleGroup: {
-    display: 'flex',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    overflow: 'hidden'
-  },
-  toggleButton: {
-    padding: '6px 16px',
-    border: 'none',
-    backgroundColor: '#fff',
-    cursor: 'pointer',
-    fontSize: '0.85rem',
-    fontWeight: 'bold',
-    color: '#555'
-  },
-  toggleButtonActive: {
-    backgroundColor: '#007bff',
-    color: '#fff'
-  }
-};
+function CategoryGroup({ g, open }) {
+  const items = g.subCategories.flatMap((sg) => sg.items);
+  const counted = items.filter(isCounted);
+  return (
+    <details className="au-group" open={open}>
+      <summary>
+        {g.categoryName}
+        <span className="au-chip">{items.length} products</span>
+        <span className="au-chip">stock {qty(sum(items, (l) => l.systemQty))}</span>
+        <span className="au-chip">counted {qty(sum(counted, (l) => l.physicalQty))}</span>
+        <span className="au-chip">sold after {qty(sum(counted, (l) => l.soldAfterCountQty))}</span>
+      </summary>
+      {g.subCategories.map((sg) => (
+        <div key={sg.subCategoryName} className="au-subgroup">
+          <h3>{sg.subCategoryName} <span className="au-muted">({sg.items.length})</span></h3>
+          <div className="au-scroll">
+            <table className="au-table au-table-tight">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th className="au-num">Current stock</th>
+                  <th className="au-num">Physically counted</th>
+                  <th className="au-num">Sold after counting</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sg.items.map((l) => <Line key={`${l.productId}-${l.barcode}`} l={l} />)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </details>
+  );
+}
 
-export default Report;
+function Line({ l }) {
+  const [openRec, setOpenRec] = useState(false);
+  const counted = isCounted(l);
+  return (
+    <>
+      <tr>
+        <td>
+          {l.productName}
+          <small className="au-block au-muted">{l.barcode}</small>
+          {l.history && (
+            <button className="au-link" onClick={() => setOpenRec(!openRec)}>
+              {openRec ? "Hide records" : "Show records"}
+            </button>
+          )}
+        </td>
+        <td className="au-num">{qty(l.systemQty)}</td>
+        <td className="au-num">{counted ? qty(l.physicalQty) : "–"}</td>
+        <td className="au-num">{counted && l.soldAfterCountQty != null ? qty(l.soldAfterCountQty) : "–"}</td>
+      </tr>
+      {openRec && (
+        <tr>
+          <td colSpan={4}><HistoryTables history={l.history} /></td>
+        </tr>
+      )}
+    </>
+  );
+}
