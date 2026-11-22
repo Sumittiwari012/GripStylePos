@@ -17,6 +17,7 @@ export default function ProductStockReport() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [opening, setOpening] = useState({ busy: false, result: null, error: "" });
 
   const load = useCallback(
     async (signal) => {
@@ -92,6 +93,37 @@ export default function ProductStockReport() {
     setPage(1);
   };
 
+  const catName = categories.find((c) => String(c.id) === applied.categoryId)?.name;
+  const subName = subCategories.find((c) => String(c.id) === applied.subCategoryId)?.name;
+  const scopeLabel =
+    [catName, subName, applied.barcode.trim() && `barcode ${applied.barcode.trim()}`].filter(Boolean).join(" › ") ||
+    "all products";
+
+  // Calls POST /api/ProductStockReport/apply-opening-stock. dryRun=true previews, false saves.
+  const runOpening = async (dryRun) => {
+    if (!dryRun && !window.confirm(`Save the calculated opening stock to the products in: ${scopeLabel}?\nThis updates your product data.`)) return;
+
+    setOpening((o) => ({ ...o, busy: true, error: "" }));
+    try {
+      const body = { dryRun };
+      if (applied.categoryId) body.categoryId = Number(applied.categoryId);
+      if (applied.subCategoryId) body.subCategoryId = Number(applied.subCategoryId);
+      if (applied.barcode.trim()) body.barcode = applied.barcode.trim();
+
+      const res = await fetch(`${API_BASE}/api/ProductStockReport/apply-opening-stock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const result = await res.json();
+      setOpening({ busy: false, result, error: "" });
+      if (!dryRun) load();
+    } catch (e) {
+      setOpening({ busy: false, result: null, error: `Could not run the opening stock update. ${e.message}.` });
+    }
+  };
+
   const items = data?.items ?? [];
   const totals = data?.totals;
 
@@ -141,6 +173,82 @@ export default function ProductStockReport() {
         </dl>
       )}
 
+      <section className="psr-opening">
+        <div className="psr-opening-head">
+          <div>
+            <strong>Opening stock</strong>
+            <span className="sub">
+              For products with no purchases: opening = in stock table + sold − returned. Applies to: {scopeLabel}.
+            </span>
+          </div>
+          <button type="button" onClick={() => runOpening(true)} disabled={opening.busy}>
+            {opening.busy ? "Working…" : "Preview opening stock"}
+          </button>
+        </div>
+
+        {opening.error && <div className="psr-error" role="alert">{opening.error}</div>}
+
+        {opening.result && (
+          <div className="psr-opening-result">
+            <p>
+              {opening.result.dryRun
+                ? <>Preview only, nothing saved yet. <strong>{opening.result.updated}</strong> of {opening.result.productsWithNoPurchases} products with no purchases would change.</>
+                : <>Saved. <strong>{opening.result.updated}</strong> products updated.</>}
+              {" "}{opening.result.alreadyCorrect} already correct
+              {opening.result.skippedNegative > 0 && <>, {opening.result.skippedNegative} skipped because the result was negative</>}.
+            </p>
+
+            {opening.result.changes?.length > 0 && (
+              <div className="psr-tablewrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th className="n">Old opening</th>
+                      <th className="n">In stock table</th>
+                      <th className="n">Sold</th>
+                      <th className="n">Returned</th>
+                      <th className="n">New opening</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opening.result.changes.slice(0, 10).map((c) => (
+                      <tr key={c.productId}>
+                        <td><strong>{c.productName}</strong><span className="sub">{c.barcode}</span></td>
+                        <td className="n">{fmtQty(c.oldOpening)}</td>
+                        <td className="n">{fmtQty(c.storedQty)}</td>
+                        <td className="n">{fmtQty(c.soldQty)}</td>
+                        <td className="n">{fmtQty(c.returnedQty)}</td>
+                        <td className="n"><strong>{fmtQty(c.newOpening)}</strong></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {opening.result.changes?.length > 10 && (
+              <span className="sub">Showing the first 10 changes.</span>
+            )}
+
+            <div className="psr-actions">
+              {opening.result.dryRun && (
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => runOpening(false)}
+                  disabled={opening.busy || opening.result.updated === 0}
+                >
+                  Save to products
+                </button>
+              )}
+              <button type="button" onClick={() => setOpening({ busy: false, result: null, error: "" })}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
       {error && <div className="psr-error" role="alert">{error}</div>}
 
       <div className="psr-tablewrap" aria-busy={loading}>
@@ -170,7 +278,6 @@ export default function ProductStockReport() {
                   </td>
                   <td className="n">
                     {fmtQty(p.openingStock)}
-                    {p.openingCalculated && <span className="sub" title="Stock table + sold − returned">calculated</span>}
                   </td>
                   <td className="n">{fmtQty(p.purchaseQty)}</td>
                   <td className="n">{fmtQty(p.salesQty)}</td>
@@ -228,6 +335,11 @@ const css = `
 .psr-totals div { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
 .psr-totals dt { font-size: 13px; color: var(--muted); }
 .psr-totals dd { margin: 2px 0 0; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.psr-opening { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 16px 0; }
+.psr-opening-head { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.psr-opening-result { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.psr-opening-result p { margin: 0; }
+.psr-opening .psr-tablewrap { margin-top: 0; }
 .psr-error { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--bad); color: var(--bad); background: #fdf0ef; border-radius: 8px; }
 .psr-tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-top: 16px; }
 .psr-tablewrap[aria-busy="true"] { opacity: .6; }
