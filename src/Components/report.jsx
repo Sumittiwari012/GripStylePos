@@ -9,7 +9,9 @@ import { ApprovalTag, Badge, Card, ErrorBox, HistoryTables, Loading, Shell, Stat
 // Every product shows only three figures:
 //   Current stock        = opening stock + purchase - sold + return
 //   Physically counted   = what the manager counted
-//   Sold after counting  = sales made after the product was counted
+//   Sales after verified = sales made after the product was counted
+//   Return after verified = customer returns made after the product was counted
+//   Remarks / Status     = reason + note and the count status
 
 const TABS = [
   ["audited", "Audited products", "audited"],
@@ -58,6 +60,7 @@ export default function ReportPage({ who }) {
       current: sum(all, (l) => l.systemQty),
       physical: sum(counted, (l) => l.physicalQty),
       soldAfter: sum(counted, (l) => l.soldAfterCountQty),
+      returnAfter: sum(counted, (l) => l.returnAfterCountQty),
     };
   }, [r]);
 
@@ -122,11 +125,12 @@ export default function ReportPage({ who }) {
                 <Stat label="Not counted" value={totals.notCounted} tone="hold" />
                 <Stat label="Current stock" value={qty(totals.current)} />
                 <Stat label="Physically counted" value={qty(totals.physical)} />
-                <Stat label="Sold after counting" value={qty(totals.soldAfter)} />
+                <Stat label="Sales after verified" value={qty(totals.soldAfter)} />
+                <Stat label="Return after verified" value={qty(totals.returnAfter)} />
               </div>
               <p className="au-muted">
-                Current stock = opening stock + purchase − sold + return. Sold after counting = sales made after each
-                product was counted. Physically counted and sold after counting add up over counted products only.
+                Current stock = opening stock + purchase − sales + customer return. Sales and returns after verified
+                are those made after each product was counted. Physically counted, sales and returns after verified add up over counted products only.
               </p>
             </Card>
           )}
@@ -180,7 +184,8 @@ function CategoryGroup({ g, open }) {
         <span className="au-chip">{items.length} products</span>
         <span className="au-chip">stock {qty(sum(items, (l) => l.systemQty))}</span>
         <span className="au-chip">counted {qty(sum(counted, (l) => l.physicalQty))}</span>
-        <span className="au-chip">sold after {qty(sum(counted, (l) => l.soldAfterCountQty))}</span>
+        <span className="au-chip">sales after {qty(sum(counted, (l) => l.soldAfterCountQty))}</span>
+        <span className="au-chip">returns after {qty(sum(counted, (l) => l.returnAfterCountQty))}</span>
       </summary>
       {g.subCategories.map((sg) => (
         <div key={sg.subCategoryName} className="au-subgroup">
@@ -192,7 +197,10 @@ function CategoryGroup({ g, open }) {
                   <th>Product</th>
                   <th className="au-num">Current stock</th>
                   <th className="au-num">Physically counted</th>
-                  <th className="au-num">Sold after counting</th>
+                  <th className="au-num">Sales after verified</th>
+                  <th className="au-num">Return after verified</th>
+                  <th>Remarks</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,10 +232,13 @@ function Line({ l }) {
         <td className="au-num">{qty(l.systemQty)}</td>
         <td className="au-num">{counted ? qty(l.physicalQty) : "–"}</td>
         <td className="au-num">{counted && l.soldAfterCountQty != null ? qty(l.soldAfterCountQty) : "–"}</td>
+        <td className="au-num">{counted && l.returnAfterCountQty != null ? qty(l.returnAfterCountQty) : "–"}</td>
+        <td className="au-note">{[l.reasonCode, l.note].filter(Boolean).join(" · ") || "–"}</td>
+        <td><Badge status={l.status || "Pending"} /></td>
       </tr>
       {openRec && (
         <tr>
-          <td colSpan={4}><HistoryTables history={l.history} /></td>
+          <td colSpan={7}><HistoryTables history={l.history} /></td>
         </tr>
       )}
     </>
