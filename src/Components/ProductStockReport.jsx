@@ -18,6 +18,7 @@ export default function ProductStockReport() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [opening, setOpening] = useState({ busy: false, result: null, error: "" });
+  const [allowNegative, setAllowNegative] = useState(false);
 
   const load = useCallback(
     async (signal) => {
@@ -100,15 +101,19 @@ export default function ProductStockReport() {
     "all products";
 
   // Calls POST /api/ProductStockReport/apply-opening-stock. dryRun=true previews, false saves.
-  const runOpening = async (dryRun) => {
-    if (!dryRun && !window.confirm(`Save the calculated opening stock to the products in: ${scopeLabel}?\nThis updates your product data.`)) return;
+  // all=true ignores the filters and applies to every category and sub-category.
+  const runOpening = async (dryRun, all = false) => {
+    const scope = all ? "ALL products (every category and sub-category)" : scopeLabel;
+    if (!dryRun && !window.confirm(`Save the calculated opening stock to: ${scope}?\nThis updates your product data.`)) return;
 
     setOpening((o) => ({ ...o, busy: true, error: "" }));
     try {
-      const body = { dryRun };
-      if (applied.categoryId) body.categoryId = Number(applied.categoryId);
-      if (applied.subCategoryId) body.subCategoryId = Number(applied.subCategoryId);
-      if (applied.barcode.trim()) body.barcode = applied.barcode.trim();
+      const body = { dryRun, allowNegative };
+      if (!all) {
+        if (applied.categoryId) body.categoryId = Number(applied.categoryId);
+        if (applied.subCategoryId) body.subCategoryId = Number(applied.subCategoryId);
+        if (applied.barcode.trim()) body.barcode = applied.barcode.trim();
+      }
 
       const res = await fetch(`${API_BASE}/api/ProductStockReport/apply-opening-stock`, {
         method: "POST",
@@ -181,10 +186,19 @@ export default function ProductStockReport() {
               For products with no purchases: opening = in stock table + sold − returned. Applies to: {scopeLabel}.
             </span>
           </div>
-          <button type="button" onClick={() => runOpening(true)} disabled={opening.busy}>
-            {opening.busy ? "Working…" : "Preview opening stock"}
-          </button>
+          <div className="psr-actions">
+            <button type="button" onClick={() => runOpening(true)} disabled={opening.busy}>
+              {opening.busy ? "Working…" : "Preview opening stock"}
+            </button>
+            <button type="button" className="primary" onClick={() => runOpening(false, true)} disabled={opening.busy}>
+              Apply to all products
+            </button>
+          </div>
         </div>
+        <label className="psr-check">
+          <input type="checkbox" checked={allowNegative} onChange={(e) => setAllowNegative(e.target.checked)} />
+          Also save results that are negative
+        </label>
 
         {opening.error && <div className="psr-error" role="alert">{opening.error}</div>}
 
@@ -197,6 +211,17 @@ export default function ProductStockReport() {
               {" "}{opening.result.alreadyCorrect} already correct
               {opening.result.skippedNegative > 0 && <>, {opening.result.skippedNegative} skipped because the result was negative</>}.
             </p>
+
+            {opening.result.productsWithNoPurchases === 0 && (
+              <p className="sub">
+                No products matched. Every product in this scope has purchase entries, and this update only applies to products with no purchases.
+              </p>
+            )}
+            {opening.result.updated === 0 && opening.result.skippedNegative > 0 && (
+              <p className="sub">
+                The skipped products came out negative, which usually means their stock, sales or returns don't add up. Tick "Also save results that are negative" to save them anyway.
+              </p>
+            )}
 
             {opening.result.changes?.length > 0 && (
               <div className="psr-tablewrap">
@@ -340,6 +365,8 @@ const css = `
 .psr-opening-result { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .psr-opening-result p { margin: 0; }
 .psr-opening .psr-tablewrap { margin-top: 0; }
+.psr-check { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.psr-check input { height: auto; }
 .psr-error { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--bad); color: var(--bad); background: #fdf0ef; border-radius: 8px; }
 .psr-tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-top: 16px; }
 .psr-tablewrap[aria-busy="true"] { opacity: .6; }
