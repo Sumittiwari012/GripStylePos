@@ -103,6 +103,24 @@ export function StatusTree({ role, auditId, canAct = false, canReview = false, a
   const done = (msg) => { close(); notify(msg); setDoneTick((n) => n + 1); setVer((v) => v + 1); summary.reload(); onChanged?.(); };
   const list = data?.[section] ?? [];
 
+  // Verify needs no reason: call the API straight away, no dialog.
+  // Send back (and every other action) still opens its dialog; Send back requires a note.
+  const handleAction = async (type, item) => {
+    if (type === "review" && item.action === "Verify") {
+      try {
+        const r = await api(`/${auditId}/review`, {
+          method: "POST",
+          body: { scope: item.scope, id: item.id, action: "Verify", note: null },
+        });
+        done(r.message);
+      } catch (e) {
+        notify(e.message, "err");
+      }
+      return;
+    }
+    setDlg({ type, item });
+  };
+
   return (
     <Card title="Products" right={<div className="au-row" style={{ alignItems: "center" }}><ViewToggle value={view} onChange={setView} /><button className="au-btn au-btn-ghost au-btn-sm" onClick={() => { setVer((v) => v + 1); summary.reload(); }}>Refresh</button></div>}>
       {toast}
@@ -130,7 +148,7 @@ export function StatusTree({ role, auditId, canAct = false, canReview = false, a
               cat={c} role={role} auditId={auditId} who={who}
               canAct={canAct} allowSentBack={allowSentBack} perm={perm}
               ver={ver} doneTick={doneTick} view={view} focus={focus}
-              onAction={(type, item) => setDlg({ type, item })}
+              onAction={handleAction}
             />
           ))}
         </>
