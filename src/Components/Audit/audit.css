@@ -217,3 +217,58 @@
 .au-subdetails > summary { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; cursor: pointer; font-weight: 600; padding: .35rem 0; list-style-position: inside; }
 .au-subdetails > summary .au-subtitle { font-size: .95rem; }
 .au-overridden { text-decoration: line-through; }
+/* ───── card view (append to audit.css) ───── */
+.au-viewtoggle button { padding: .3rem .7rem; }
+.au-seg-scroll { max-width: 100%; overflow-x: auto; }
+.au-seg-scroll button { white-space: nowrap; }
+
+/* sub category cards */
+.au-subcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .6rem; margin: .6rem 0; }
+.au-subcard { text-align: left; font: inherit; color: inherit; cursor: pointer; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: .8rem .9rem; display: flex; flex-direction: column; gap: .35rem; min-height: 96px; }
+.au-subcard:hover { border-color: var(--brand); }
+.au-subcard-top { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.au-subcard-go { font-size: 1.5rem; line-height: 1; color: var(--muted); }
+.au-subcard-chips { display: flex; gap: .3rem; flex-wrap: wrap; }
+.au-subcard-chips .au-chip { margin-left: 0; }
+
+/* product deck */
+.au-cardhead { display: flex; align-items: center; gap: .6rem; margin: .25rem 0 .5rem; }
+.au-cardhead-t { font-size: 1.05rem; }
+.au-deck-nav { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: .5rem 0; }
+.au-deck-count { font-weight: 700; }
+.au-deck-hint { text-align: center; font-size: .82rem; }
+.au-deckwrap { touch-action: pan-y; overflow-x: clip; }
+.au-pcard { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 1rem; box-shadow: 0 4px 16px rgba(22,35,59,.08); display: flex; flex-direction: column; gap: .8rem; user-select: none; -webkit-user-select: none; }
+.au-pcard-next { animation: au-in-r .22s ease-out; }
+.au-pcard-prev { animation: au-in-l .22s ease-out; }
+@keyframes au-in-r { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes au-in-l { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .au-pcard { animation: none !important; } }
+.au-pcard.au-row-hit { box-shadow: 0 0 0 3px #f2b705; }
+.au-pc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; }
+.au-pc-barcode { font-size: 1.25rem; font-weight: 700; word-break: break-all; }
+.au-pc-name { color: var(--muted); }
+.au-pc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+.au-pc-stats .au-stat { text-align: center; }
+.au-pc-facts { display: grid; gap: .4rem; margin: 0; }
+.au-pc-facts > div { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding-top: .4rem; }
+.au-pc-facts dt { color: var(--muted); }
+.au-pc-facts dd { margin: 0; text-align: right; }
+.au-pc-big { min-height: 54px; font-size: 1.05rem; }
+.au-pc-decide { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.au-pc-decide .au-btn { min-height: 54px; font-size: 1.05rem; }
+.au-pc-decide .au-btn:only-child { grid-column: 1 / -1; }
+.au-pc-more { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+/* ───── general phone fixes ───── */
+@media (max-width: 640px) {
+  .au-top { flex-wrap: wrap; padding: .6rem .8rem; }
+  .au-tabs { overflow-x: auto; scrollbar-width: none; }
+  .au-tabs button { white-space: nowrap; padding: .6rem .8rem; }
+  .au-card { padding: .8rem; }
+  .au-actions { width: 100%; }
+  .au-actions .au-btn { flex: 1; }
+  .au-overlay { padding: 0; }
+  .au-modal { max-width: none; min-height: 100dvh; border-radius: 0; border: 0; margin: 0; }
+  .au-toast { width: calc(100% - 2rem); text-align: center; }
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, qty } from "./api";
 import { Badge, BarcodeInput, FindBar, CountForm, Card, ErrorBox, Field, Loading, Modal, Stat, useLoad, useToast } from "./ui";
 import { HistoryDialog, LogDialog } from "./Panels";
+import { CardBody, ViewToggle, useViewMode } from "./CardView";
 
 // Pending / Completed categories. A category sits in Pending until EVERY barcode in it
 // is counted (Matched / Short / Excess) and none is sent back; then it moves to Completed by itself.
@@ -61,6 +62,8 @@ export function StatusTree({ role, auditId, canAct = false, canReview = false, a
   const [dlg, setDlg] = useState(null); // { type: count | reset | log | history | review, item }
   const [toast, notify] = useToast();
   const [focus, setFocus] = useState(null); // product found by scanning: opens its category and highlights the row
+  const [view, setView] = useViewMode(); // "table" | "card" (remembered on this device)
+  const [doneTick, setDoneTick] = useState(0); // bumps when an action succeeded (card view moves to the next product)
 
   // incharge and owner can do the same review actions (verify / send back)
   const reviewer = (role === "incharge" && canAct) || (role === "owner" && canReview);
@@ -97,11 +100,11 @@ export function StatusTree({ role, auditId, canAct = false, canReview = false, a
 
   const data = summary.data;
   const close = () => setDlg(null);
-  const done = (msg) => { close(); notify(msg); setVer((v) => v + 1); summary.reload(); onChanged?.(); };
+  const done = (msg) => { close(); notify(msg); setDoneTick((n) => n + 1); setVer((v) => v + 1); summary.reload(); onChanged?.(); };
   const list = data?.[section] ?? [];
 
   return (
-    <Card title="Products" right={<button className="au-btn au-btn-ghost au-btn-sm" onClick={() => { setVer((v) => v + 1); summary.reload(); }}>Refresh</button>}>
+    <Card title="Products" right={<div className="au-row" style={{ alignItems: "center" }}><ViewToggle value={view} onChange={setView} /><button className="au-btn au-btn-ghost au-btn-sm" onClick={() => { setVer((v) => v + 1); summary.reload(); }}>Refresh</button></div>}>
       {toast}
       <FindBar onFind={locate} />
       <ErrorBox error={summary.error} onRetry={summary.reload} />
@@ -126,7 +129,7 @@ export function StatusTree({ role, auditId, canAct = false, canReview = false, a
               key={`${section}-${c.categoryId}`}
               cat={c} role={role} auditId={auditId} who={who}
               canAct={canAct} allowSentBack={allowSentBack} perm={perm}
-              ver={ver} focus={focus}
+              ver={ver} doneTick={doneTick} view={view} focus={focus}
               onAction={(type, item) => setDlg({ type, item })}
             />
           ))}
@@ -142,7 +145,7 @@ export function StatusTree({ role, auditId, canAct = false, canReview = false, a
   );
 }
 
-function CategoryBlock({ cat, role, auditId, who, canAct, allowSentBack, perm, ver, focus, onAction }) {
+function CategoryBlock({ cat, role, auditId, who, canAct, allowSentBack, perm, ver, doneTick, view, focus, onAction }) {
   const [open, setOpen] = useState(false);
   useEffect(() => { if (focus && focus.categoryId === cat.categoryId) setOpen(true); }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
@@ -159,7 +162,9 @@ function CategoryBlock({ cat, role, auditId, who, canAct, allowSentBack, perm, v
         {cat.verified > 0 && <span className="au-chip au-chip-ok">{cat.verified} verified</span>}
         {cat.sentBack > 0 && <span className="au-chip au-chip-bad">{cat.sentBack} sent back</span>}
       </summary>
-      {open && <CategoryBody cat={cat} role={role} auditId={auditId} who={who} canAct={canAct} allowSentBack={allowSentBack} perm={perm} ver={ver} focus={focus} onAction={onAction} />}
+      {open && (view === "card"
+        ? <CardBody cat={cat} role={role} auditId={auditId} who={who} canAct={canAct} allowSentBack={allowSentBack} perm={perm} ver={ver} doneTick={doneTick} focus={focus} onAction={onAction} />
+        : <CategoryBody cat={cat} role={role} auditId={auditId} who={who} canAct={canAct} allowSentBack={allowSentBack} perm={perm} ver={ver} focus={focus} onAction={onAction} />)}
     </details>
   );
 }
