@@ -173,3 +173,19 @@
 
 /* keep a scrolled-to row clear of the sticky find bar */
 .au-table tr[id^="au-row-"] { scroll-margin-top: 90px; }
+/* ───── product review: verify / send back (append to audit.css) ───── */
+.au-s-Verified { color: var(--ok); }
+.au-s-SentBack { color: var(--short); }
+
+.au-chip-ok  { background: #dff3e8; border-color: #9fd3b6; color: #135a36; }
+.au-chip-bad { background: #fdf0ef; border-color: #e8b4b0; color: #7d1d17; }
+
+/* "Whole category" bar above the sub categories */
+.au-reviewbar { align-items: center; margin: .25rem 0 .6rem; padding: .4rem .6rem; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+
+/* sub category heading: buttons sit on the right */
+.au-h3-actions { margin-left: auto; display: inline-flex; gap: .4rem; flex-wrap: wrap; }
+
+/* row actions may wrap now that there are more buttons */
+.au-rowactions-wrap { white-space: normal !important; }
+.au-rowactions-wrap .au-btn { margin: 0 0 .25rem .25rem; }
