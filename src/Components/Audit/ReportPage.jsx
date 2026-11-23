@@ -25,7 +25,11 @@ const sum = (arr, f) => arr.reduce((n, x) => n + (Number(f(x)) || 0), 0);
 // stockAtVerification comes from the server (qtyAtVerification)
 function figures(l) {
   if (!isCounted(l)) return { stockAt: null, physical: null, balance: null, live: num(l.systemQty), total: null };
-  const stockAt = num(l.qtyAtVerification);
+  // Stock at verification = opening stock + purchase - sales before verification + return before verification
+  let stockAt = num(l.qtyAtVerification);
+  if (stockAt === null && l.openingStock != null && l.purchaseBeforeQty != null) {
+    stockAt = num(l.openingStock) + num(l.purchaseBeforeQty) - (num(l.soldBeforeQty) || 0) + (num(l.returnBeforeQty) || 0);
+  }
   const physical = num(l.physicalQty);
   const balance = stockAt === null || physical === null ? null : physical - stockAt;
   const live = num(l.systemQty);
@@ -171,6 +175,7 @@ export default function ReportPage({ who }) {
             <section className="au-sec au-sec-mgr" aria-label="Manager section">
               <header className="au-sec-head">
                 <h2>Manager section</h2>
+                <p className="au-eq">Stock at verification = Opening stock + Purchase − Sales before verification + Return before verification</p>
                 <p className="au-eq">Balance = Physical count − Stock at verification</p>
               </header>
               <div className="au-stats">
@@ -299,7 +304,7 @@ function CategoryGroup({ g, open, perm, review }) {
                   <th rowSpan={2}>Product</th>
                   <th colSpan={3} className="au-gh au-gh-mgr">
                     Manager
-                    <small>Balance = Physical − Stock at verification</small>
+                    <small>Stock at verification = Opening + Purchase − Sales before + Return before<br />Balance = Physical − Stock at verification</small>
                   </th>
                   <th colSpan={5} className="au-gh au-gh-inc">
                     Incharge
