@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, fmtDate, qty, ROLE } from "./api";
+import { Deck, ViewToggle, useViewMode } from "./CardView";
 import { Badge, Card, CountForm, ErrorBox, Field, Loading, Modal, ReviewBadge, Stat, useLoad, useToast } from "./ui";
 
 const isDone = (s) => s === "Matched" || s === "Short" || s === "Excess";
@@ -12,16 +13,44 @@ export function SubordinatesPanel({ auditId, subs, canAct, onChanged, refreshKey
   const [toast, notify] = useToast();
   const [dlg, setDlg] = useState(null); // { sub }
   const list = subs.data || [];
+  const [view, setView] = useViewMode();
 
   return (
     <>
       {toast}
-      <ReviewCard auditId={auditId} subs={list} canAct={canAct} notify={notify} onChanged={onChanged} refreshKey={refreshKey} />
+      <div className="au-row" style={{ justifyContent: "flex-end", marginBottom: ".5rem" }}><ViewToggle value={view} onChange={setView} /></div>
+      <ReviewCard view={view} auditId={auditId} subs={list} canAct={canAct} notify={notify} onChanged={onChanged} refreshKey={refreshKey} />
 
       <Card title="My subordinates" right={<button className="au-btn au-btn-ghost au-btn-sm" onClick={subs.reload}>Refresh</button>}>
         <ErrorBox error={subs.error} onRetry={subs.reload} />
         {subs.loading && !subs.data ? <Loading /> : list.length === 0 ? (
           <p className="au-muted">You have not added a subordinate yet. Add one below, then give them categories to count.</p>
+        ) : view === "card" ? (
+          <div>
+            {list.map((x) => (
+              <article key={x.auditRoleId} className="au-pcard au-pcard-static">
+                <div className="au-pc-top">
+                  <div>
+                    <div className="au-pc-barcode">{x.personName}</div>
+                    <div className="au-pc-name">{x.phoneNumber}</div>
+                  </div>
+                  {canAct && <button className="au-btn au-btn-sm" onClick={() => setDlg({ sub: x })}>Categories</button>}
+                </div>
+                <div>
+                  {x.assignedCategories.length === 0
+                    ? <span className="au-muted">No categories yet</span>
+                    : x.assignedCategories.map((c) => <span key={c.categoryId} className="au-chip" style={{ marginLeft: 0, marginRight: ".3rem" }}>{c.categoryName}</span>)}
+                </div>
+                <div className="au-pc-grid4">
+                  <div className="au-stat"><div className="au-stat-v">{x.submitted}</div><div className="au-stat-l">Sent</div></div>
+                  <div className="au-stat au-t-hold"><div className="au-stat-v">{x.awaitingReview}</div><div className="au-stat-l">To review</div></div>
+                  <div className="au-stat au-t-ok"><div className="au-stat-v">{x.accepted}</div><div className="au-stat-l">Accepted</div></div>
+                  <div className="au-stat au-t-short"><div className="au-stat-v">{x.rejected}</div><div className="au-stat-l">Rejected</div></div>
+                </div>
+                <small className="au-muted">Last activity: {fmtDate(x.lastActivityAt)}</small>
+              </article>
+            ))}
+          </div>
         ) : (
           <div className="au-scroll">
             <table className="au-table">
@@ -175,9 +204,10 @@ function CategoriesDialog({ auditId, sub, onClose, onDone }) {
 // ───────────── review what subordinates counted ─────────────
 const STATES = [["pending", "To review"], ["accepted", "Accepted"], ["rejected", "Rejected"], ["all", "All"]];
 
-function ReviewCard({ auditId, subs, canAct, notify, onChanged, refreshKey }) {
+function ReviewCard({ view, auditId, subs, canAct, notify, onChanged, refreshKey }) {
   const [state, setState] = useState("pending");
   const [subId, setSubId] = useState("");
+  const [idx, setIdx] = useState(0);
   const [dlg, setDlg] = useState(null); // { type: "accept" | "reject", e }
 
   const { data, error, loading, reload } = useLoad(() => {
@@ -186,7 +216,8 @@ function ReviewCard({ auditId, subs, canAct, notify, onChanged, refreshKey }) {
     return api(`/${auditId}/subordinates/entries?${p}`);
   }, [auditId, state, subId, refreshKey]);
 
-  const done = (msg) => { setDlg(null); notify(msg); reload(); onChanged?.(); };
+  // pending list shrinks by itself (next card slides in); other lists step forward
+  const done = (msg) => { setDlg(null); notify(msg); if (state !== "pending") setIdx((i) => i + 1); reload(); onChanged?.(); };
   const items = data?.items || [];
 
   return (
@@ -197,9 +228,9 @@ function ReviewCard({ auditId, subs, canAct, notify, onChanged, refreshKey }) {
       <p className="au-muted">These counts are only shown to you. Nothing goes into the report until you accept it.</p>
       <div className="au-row" style={{ margin: ".5rem 0" }}>
         <div className="au-seg">
-          {STATES.map(([k, l]) => <button key={k} className={state === k ? "on" : ""} onClick={() => setState(k)}>{l}</button>)}
+          {STATES.map(([k, l]) => <button key={k} className={state === k ? "on" : ""} onClick={() => { setState(k); setIdx(0); }}>{l}</button>)}
         </div>
-        <select className="au-input au-input-sm" value={subId} onChange={(e) => setSubId(e.target.value)} aria-label="Subordinate">
+        <select className="au-input au-input-sm" value={subId} onChange={(e) => { setSubId(e.target.value); setIdx(0); }} aria-label="Subordinate">
           <option value="">All subordinates</option>
           {subs.map((x) => <option key={x.auditRoleId} value={x.auditRoleId}>{x.personName}</option>)}
         </select>
@@ -208,6 +239,41 @@ function ReviewCard({ auditId, subs, canAct, notify, onChanged, refreshKey }) {
       <ErrorBox error={error} onRetry={reload} />
       {loading && !data ? <Loading /> : items.length === 0 ? (
         <p className="au-muted">{state === "pending" ? "Nothing waiting for your review." : "Nothing here."}</p>
+      ) : view === "card" ? (
+        <Deck
+          items={items}
+          idx={idx}
+          setIdx={setIdx}
+          getKey={(e) => e.entryId}
+          render={(e) => (
+            <>
+              <div className="au-pc-top">
+                <div>
+                  <div className="au-pc-barcode">{e.barcode}</div>
+                  <div className="au-pc-name">{e.productName} · {e.categoryName}</div>
+                </div>
+                <ReviewBadge state={e.reviewState} />
+              </div>
+              <div className="au-pc-name">Sent by <strong>{e.subordinateName}</strong> · {fmtDate(e.submittedAt)}</div>
+              <div className="au-pc-stats">
+                <div className="au-stat"><div className="au-stat-v">{qty(e.systemQty)}</div><div className="au-stat-l">System</div></div>
+                <div className="au-stat"><div className="au-stat-v">{qty(e.subPhysicalQty)}</div><div className="au-stat-l">Their count</div></div>
+                <div className={`au-stat ${e.subVarianceQty < 0 ? "au-t-short" : e.subVarianceQty > 0 ? "au-t-excess" : ""}`}><div className="au-stat-v">{qty(e.subVarianceQty)}</div><div className="au-stat-l">Variance</div></div>
+              </div>
+              <dl className="au-pc-facts">
+                <div><dt>Your status</dt><dd><Badge status={e.mainStatus} /></dd></div>
+                <div><dt>Reason / note</dt><dd>{[e.reasonCode, e.note].filter(Boolean).join(" · ") || "–"}</dd></div>
+                {e.reviewComment && <div><dt>Your comment</dt><dd>{e.reviewComment}</dd></div>}
+              </dl>
+              {e.reviewState === "AwaitingReview" && canAct && (
+                <div className="au-pc-decide">
+                  <button className="au-btn au-btn-primary" onClick={() => setDlg({ type: "accept", e })}>Accept</button>
+                  <button className="au-btn au-btn-danger" onClick={() => setDlg({ type: "reject", e })}>Reject</button>
+                </div>
+              )}
+            </>
+          )}
+        />
       ) : (
         <div className="au-scroll">
           <table className="au-table au-table-tight">

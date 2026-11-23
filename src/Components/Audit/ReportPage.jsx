@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, fmtDate, qty, ROUTE_BASE, session } from "./api";
-import { ApprovalTag, Badge, Card, ErrorBox, Field, Loading, Modal, Shell, Stat, useLoad, useToast } from "./ui";
+import { Deck, ViewToggle, useViewMode } from "./CardView";
+import { ApprovalTag, Bar, Badge, Card, ErrorBox, Field, Loading, Modal, Shell, Stat, useLoad, useToast } from "./ui";
 import { ReviewButtons, ReviewDialog, ReviewTag } from "./StatusTree";
 
 // Owner route:    /audit/owner/:auditId/report
@@ -80,6 +81,8 @@ export default function ReportPage({ who }) {
   const [q, setQ] = useState("");
   const [only, setOnly] = useState("all"); // all | counted | notCounted
   const [expand, setExpand] = useState({ open: false, n: 0 });
+  const [layout, setLayout] = useViewMode(); // table | card
+  const [doneTick, setDoneTick] = useState(0); // a verify / send back went through
 
   const { data: r, error, loading, reload } = useLoad(
     () => api(`/${auditId}/report?includeHistory=false`, { who }),
@@ -267,7 +270,7 @@ export default function ReportPage({ who }) {
             </section>
           </div>
 
-          <Card title="Products">
+          <Card title="Products" right={<ViewToggle value={layout} onChange={setLayout} />}>
             <div className="au-row" style={{ margin: "0 0 .8rem", alignItems: "center" }}>
               <input
                 className="au-input au-input-sm"
@@ -282,14 +285,16 @@ export default function ReportPage({ who }) {
                   <button key={k} className={only === k ? "on" : ""} onClick={() => setOnly(k)}>{l}</button>
                 ))}
               </div>
-              <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: true, n: e.n + 1 }))}>Expand all</button>
-              <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: false, n: e.n + 1 }))}>Collapse all</button>
+              {layout !== "card" && <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: true, n: e.n + 1 }))}>Expand all</button>}
+              {layout !== "card" && <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: false, n: e.n + 1 }))}>Collapse all</button>}
             </div>
 
             {shown === 0 && <p className="au-muted">{term || only !== "all" ? "No product matches." : "No products."}</p>}
-            {view.map((g) => (
-              <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} subOpen={expand.n === 0 || expand.open || !!term} perm={perm} review={review} editNote={editNote} />
-            ))}
+            {layout === "card"
+              ? <ReportCards groups={view} perm={perm} review={review} editNote={editNote} doneTick={doneTick} />
+              : view.map((g) => (
+                <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} subOpen={expand.n === 0 || expand.open || !!term} perm={perm} review={review} editNote={editNote} />
+              ))}
           </Card>
 
           {dlg?.kind === "review" && (
@@ -297,7 +302,7 @@ export default function ReportPage({ who }) {
               auditId={auditId}
               target={dlg}
               onClose={() => setDlg(null)}
-              onDone={(msg) => { setDlg(null); notify(msg); reload(); }}
+              onDone={(msg) => { setDlg(null); notify(msg); setDoneTick((n) => n + 1); reload(); }}
             />
           )}
           {dlg?.kind === "note" && (
@@ -505,5 +510,199 @@ function NoteDialog({ auditId, line, onClose, onDone }) {
       <ErrorBox error={err} />
       <button className="au-btn au-btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : note.trim() ? "Save note" : "Remove note"}</button>
     </Modal>
+  );
+}
+
+// ───────────── card view: category -> sub category -> swipe through products ─────────────
+function ReportCards({ groups, perm, review, editNote, doneTick }) {
+  const [catName, setCatName] = useState(null);
+  const [subName, setSubName] = useState(null);
+  const [idx, setIdx] = useState(0);
+  const tap = useRef(null);
+  const advance = useRef(null);
+  const showReview = perm.verify || perm.sendBack;
+
+  const g = catName !== null ? groups.find((x) => x.categoryName === catName) : null;
+  const sg = g && subName !== null ? g.subCategories.find((x) => x.subCategoryName === subName) : null;
+
+  // verify / send back went through -> go to the next product once the new report is in
+  useEffect(() => { if (tap.current) { advance.current = tap.current; tap.current = null; } }, [doneTick]);
+  useEffect(() => {
+    const a = advance.current;
+    if (!a) return;
+    advance.current = null;
+    const ss = groups.find((x) => x.categoryName === a.cat)?.subCategories.find((x) => x.subCategoryName === a.sub);
+    if (!ss) return;
+    const pos = ss.items.findIndex((x) => x.verificationId === a.id);
+    setIdx(Math.max(0, Math.min(pos >= 0 ? pos + 1 : a.idx, ss.items.length - 1)));
+  }, [groups]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const chips = (t) => (
+    <span className="au-subcard-chips">
+      {t.verified > 0 && <span className="au-chip au-chip-ok">{t.verified} verified</span>}
+      {t.sentBack > 0 && <span className="au-chip au-chip-bad">{t.sentBack} sent back</span>}
+    </span>
+  );
+
+  // ── 1. categories ──
+  if (!g) {
+    return (
+      <div className="au-subcards">
+        {groups.map((c) => {
+          const items = c.subCategories.flatMap((x) => x.items);
+          const t = tally(items);
+          return (
+            <button key={c.categoryName} className="au-subcard" onClick={() => { setCatName(c.categoryName); setSubName(null); setIdx(0); }}>
+              <span className="au-subcard-top"><strong>{c.categoryName}</strong><span className="au-subcard-go" aria-hidden="true">›</span></span>
+              <span className="au-muted">{items.length} products · {t.counted} counted</span>
+              <Bar percent={items.length ? Math.round((t.counted / items.length) * 100) : 0} />
+              {chips(t)}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── 2. sub categories of one category ──
+  if (!sg) {
+    const items = g.subCategories.flatMap((x) => x.items);
+    const ct = tally(items);
+    const catId = items[0]?.categoryId;
+    return (
+      <>
+        <div className="au-cardhead">
+          <button className="au-btn au-btn-sm" onClick={() => setCatName(null)}>← Categories</button>
+          <strong className="au-cardhead-t">{g.categoryName}</strong>
+        </div>
+        {showReview && catId > 0 && (
+          <div className="au-row au-reviewbar">
+            <span className="au-muted">Whole category:</span>
+            <ReviewButtons
+              perm={perm} counted={ct.counted} verified={ct.verified} sentBack={ct.sentBack} label=" category"
+              onVerify={() => review("Verify", "Category", catId, g.categoryName)}
+              onSendBack={() => review("SendBack", "Category", catId, g.categoryName)}
+            />
+          </div>
+        )}
+        <div className="au-subcards">
+          {g.subCategories.map((x) => {
+            const t = tally(x.items);
+            return (
+              <button key={x.subCategoryName} className="au-subcard" onClick={() => { setSubName(x.subCategoryName); setIdx(0); }}>
+                <span className="au-subcard-top"><strong>{x.subCategoryName}</strong><span className="au-subcard-go" aria-hidden="true">›</span></span>
+                <span className="au-muted">{x.items.length} products · {t.counted} counted</span>
+                <Bar percent={x.items.length ? Math.round((t.counted / x.items.length) * 100) : 0} />
+                {chips(t)}
+              </button>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
+  // ── 3. products of one sub category, one card at a time ──
+  const st = tally(sg.items);
+  const subId = sg.items[0]?.subCategoryId;
+  const cur = Math.min(idx, Math.max(sg.items.length - 1, 0));
+  return (
+    <>
+      <div className="au-cardhead">
+        <button className="au-btn au-btn-sm" onClick={() => setSubName(null)}>← Sub categories</button>
+        <strong className="au-cardhead-t">{sg.subCategoryName}</strong>
+      </div>
+      <div className="au-row au-muted" style={{ alignItems: "center", fontSize: ".85rem", marginBottom: ".4rem" }}>
+        <span>{g.categoryName} · {sg.items.length} products</span>
+        {chips(st)}
+      </div>
+      {showReview && subId > 0 && (
+        <div className="au-row au-reviewbar">
+          <span className="au-muted">Whole sub category:</span>
+          <ReviewButtons
+            perm={perm} counted={st.counted} verified={st.verified} sentBack={st.sentBack} label=" all"
+            onVerify={() => review("Verify", "SubCategory", subId, sg.subCategoryName)}
+            onSendBack={() => review("SendBack", "SubCategory", subId, sg.subCategoryName)}
+          />
+        </div>
+      )}
+      <Deck
+        items={sg.items}
+        idx={idx}
+        setIdx={setIdx}
+        getKey={(l) => l.verificationId ?? `${l.productId}-${l.barcode}`}
+        render={(l) => {
+          const counted = isCounted(l);
+          const f = figures(l);
+          const rs = l.reviewStatus;
+          const mgrNote = [l.reasonCode, l.note].filter(Boolean).join(" · ");
+          const canV = perm.verify && counted && rs !== "Verified" && !!l.verificationId;
+          const canB = perm.sendBack && counted && rs !== "SentBack" && !!l.verificationId;
+          const decide = (action) => {
+            tap.current = { cat: g.categoryName, sub: sg.subCategoryName, id: l.verificationId, idx: cur };
+            review(action, "Product", l.verificationId, l.productName);
+          };
+          return (
+            <>
+              <div className="au-pc-top">
+                <div>
+                  <div className="au-pc-barcode">{l.productName}</div>
+                  <div className="au-pc-name">{l.barcode}</div>
+                  {counted && l.verifiedBy && <small className="au-block au-muted">Counted by {l.verifiedBy}{l.verifiedAt ? ` · ${fmtDate(l.verifiedAt)}` : ""}</small>}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <Badge status={l.status || "Pending"} />
+                  <div style={{ marginTop: ".3rem" }}><ReviewTag state={rs} /></div>
+                </div>
+              </div>
+
+              <div className="au-pc-sec au-pc-sec-mgr">
+                <h4>Manager</h4>
+                <div className="au-pc-stats">
+                  <div className="au-stat"><div className="au-stat-v">{show(f.stockAt)}</div><div className="au-stat-l">Stock at verification</div></div>
+                  <div className="au-stat"><div className="au-stat-v">{show(f.physical)}</div><div className="au-stat-l">Physical count</div></div>
+                  <div className={`au-stat ${f.balance < 0 ? "au-t-short" : f.balance > 0 ? "au-t-excess" : ""}`}><div className="au-stat-v">{signed(f.balance)}</div><div className="au-stat-l">Balance</div></div>
+                </div>
+              </div>
+
+              <div className="au-pc-sec au-pc-sec-inc">
+                <h4>Incharge</h4>
+                <div className="au-pc-stats au-pc-stats-5">
+                  <div className="au-stat"><div className="au-stat-v">{counted && l.soldAfterCountQty != null ? qty(l.soldAfterCountQty) : "–"}</div><div className="au-stat-l">Sales after</div></div>
+                  <div className="au-stat"><div className="au-stat-v">{counted && l.returnAfterCountQty != null ? qty(l.returnAfterCountQty) : "–"}</div><div className="au-stat-l">Return after</div></div>
+                  <div className="au-stat"><div className="au-stat-v">{show(f.live)}</div><div className="au-stat-l">Live stock</div></div>
+                  <div className={`au-stat ${f.balance < 0 ? "au-t-short" : f.balance > 0 ? "au-t-excess" : ""}`}><div className="au-stat-v">{signed(f.balance)}</div><div className="au-stat-l">Balance</div></div>
+                  <div className="au-stat au-t-ok"><div className="au-stat-v">{show(f.total)}</div><div className="au-stat-l">Total</div></div>
+                </div>
+              </div>
+
+              <dl className="au-pc-facts">
+                <div>
+                  <dt>Remarks</dt>
+                  <dd>
+                    {l.reviewNote ? (
+                      <>
+                        <div><strong>Incharge:</strong> {l.reviewNote}{l.reviewedBy && <small className="au-muted"> ({l.reviewedBy})</small>}</div>
+                        {mgrNote && <small className="au-block au-muted au-overridden">Manager: {mgrNote}</small>}
+                      </>
+                    ) : (mgrNote || "–")}
+                  </dd>
+                </div>
+              </dl>
+
+              {showReview && l.verificationId && (
+                <div className="au-pc-decide">
+                  {perm.verify && <button className="au-btn au-btn-primary" disabled={!canV} onClick={() => decide("Verify")}>Verify</button>}
+                  {perm.sendBack && <button className="au-btn au-btn-danger" disabled={!canB} onClick={() => decide("SendBack")}>Send back</button>}
+                </div>
+              )}
+              {perm.note && l.verificationId && (
+                <button className="au-btn au-btn-sm" onClick={() => editNote(l)}>{l.reviewNote ? "Edit note" : "Add note"}</button>
+              )}
+            </>
+          );
+        }}
+      />
+    </>
   );
 }

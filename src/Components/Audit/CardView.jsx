@@ -333,3 +333,78 @@ export function CardBody({ cat, role, auditId, who, canAct, allowSentBack, perm,
     </>
   );
 }
+
+// ─────────────────────────────────────────────────────────────
+// Generic swipe deck: one card at a time. Used by the manager's review list
+// and the subordinate's counting screen.
+//   items    already filtered list
+//   idx      current position (controlled), setIdx
+//   getKey   unique key of an item
+//   render   (item) => card content
+//   hitKey   optional key to highlight (found by scanning)
+// ─────────────────────────────────────────────────────────────
+export function Deck({ items, idx, setIdx, getKey, render, hitKey }) {
+  const [dir, setDir] = useState("next");
+  const [drag, setDrag] = useState(0);
+  const touch = useRef(null);
+  const cur = Math.min(idx, Math.max(items.length - 1, 0));
+
+  const go = (d) => {
+    const n = cur + d;
+    if (n < 0 || n >= items.length) return;
+    setDir(d > 0 ? "next" : "prev");
+    setIdx(n);
+  };
+
+  useEffect(() => {
+    const h = (e) => {
+      if (document.querySelector(".au-overlay")) return;
+      if (/INPUT|TEXTAREA|SELECT/.test(e.target?.tagName || "")) return;
+      if (e.key === "ArrowRight") go(1);
+      else if (e.key === "ArrowLeft") go(-1);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [cur, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!items.length) return null;
+  const it = items[cur];
+  const key = getKey(it);
+
+  const onTouchStart = (e) => { const p = e.touches[0]; touch.current = { x: p.clientX, y: p.clientY, h: false }; };
+  const onTouchMove = (e) => {
+    const s = touch.current;
+    if (!s) return;
+    const p = e.touches[0];
+    const dx = p.clientX - s.x, dy = p.clientY - s.y;
+    if (!s.h && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) s.h = true;
+    if (s.h) setDrag(dx);
+  };
+  const onTouchEnd = () => {
+    const s = touch.current;
+    touch.current = null;
+    if (s?.h) { if (drag < -70) go(1); else if (drag > 70) go(-1); }
+    setDrag(0);
+  };
+
+  return (
+    <>
+      <div className="au-deck-nav">
+        <button className="au-btn" disabled={cur === 0} onClick={() => go(-1)} aria-label="Previous">‹ Prev</button>
+        <span className="au-deck-count">{cur + 1} / {items.length}</span>
+        <button className="au-btn" disabled={cur >= items.length - 1} onClick={() => go(1)} aria-label="Next">Next ›</button>
+      </div>
+      <div className="au-deckwrap" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
+        <article
+          key={key}
+          id={`au-row-${key}`}
+          className={`au-pcard au-pcard-${dir} ${hitKey !== undefined && hitKey === key ? "au-row-hit" : ""}`}
+          style={drag ? { transform: `translateX(${drag}px) rotate(${drag / 60}deg)`, transition: "none", animation: "none" } : undefined}
+        >
+          {render(it)}
+        </article>
+      </div>
+      <p className="au-muted au-deck-hint">Swipe left or right to change.</p>
+    </>
+  );
+}

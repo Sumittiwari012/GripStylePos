@@ -272,3 +272,18 @@
   .au-modal { max-width: none; min-height: 100dvh; border-radius: 0; border: 0; margin: 0; }
   .au-toast { width: calc(100% - 2rem); text-align: center; }
 }
+
+/* ───── card view: lists outside the Products tree ───── */
+.au-pcard-static { animation: none; margin-bottom: .6rem; user-select: auto; -webkit-user-select: auto; }
+.au-pc-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: .4rem; }
+.au-pc-grid4 .au-stat { text-align: center; padding: .4rem .2rem; }
+.au-pc-grid4 .au-stat-v { font-size: 1.1rem; }
+
+/* ───── report page cards ───── */
+.au-pc-sec { border-radius: 10px; border-left: 4px solid; padding: .55rem .7rem; }
+.au-pc-sec h4 { margin: 0 0 .4rem; font-size: .85rem; }
+.au-pc-sec-mgr { background: rgba(13, 92, 99, .06); border-color: var(--brand); }
+.au-pc-sec-inc { background: rgba(106, 76, 186, .06); border-color: var(--excess); }
+.au-pc-sec .au-stat { background: #fff; text-align: center; padding: .4rem .3rem; }
+.au-pc-sec .au-stat-v { font-size: 1.1rem; }
+.au-pc-stats-5 { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); }
