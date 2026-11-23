@@ -12,6 +12,9 @@ const API_BASE_URL = 'https://gripstyleapi.runasp.net';
 const OFFER_API_BASE_URL = 'https://gripstyleapi.runasp.net';
 const WA_SERVICE_URL = 'http://localhost:4001'; // change to your Baileys service URL once deployed
 const WA_API_KEY = 'your-long-random-secret';
+// Cart value API (api/MysteryBox/SaveCartValue) lives in the other project.
+// Same host as above; change this one line if that project is deployed on a different URL.
+const MYSTERY_API_BASE_URL = API_BASE_URL;
 
 const buildInvoiceMessageText = ({
   invoiceNumber, customerName, items = [], totalAmount = 0, discount = 0, taxAmount = 0, payableAmount = 0
@@ -109,6 +112,10 @@ function BillingSection({ products = [], cart = [], setCart }) {
   const [isSubmittingTransaction, setIsSubmittingTransaction] = useState(false);
   const [transactionError, setTransactionError] = useState('');
   const [postSaleWarning, setPostSaleWarning] = useState('');
+
+  // ── Cart value (saved against the customer's phone number) ──
+  const [isSavingCart, setIsSavingCart] = useState(false);
+  const [cartSaveMsg, setCartSaveMsg] = useState(null); // { ok, text }
 
   // ── Offers (never block billing) ──
   const [offers, setOffers] = useState([]);
@@ -254,6 +261,36 @@ function BillingSection({ products = [], cart = [], setCart }) {
 
   const currentPayments = paymentsByInvoice[invoiceNumber] ?? [];
   const amountPaid = currentPayments.reduce((sum, p) => sum + p.amount, 0);
+
+  // ── Save cart value for the customer's phone number (adds the number if new, else updates) ──
+  const handleSaveCartValue = async () => {
+    // keep the last 10 digits so "+91 98765 43210" also works
+    const phone = String(selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber ?? '')
+      .replace(/\D/g, '')
+      .slice(-10);
+    if (!phone) {
+      setCartSaveMsg({ ok: false, text: 'Add a customer first.' });
+      return;
+    }
+
+    setIsSavingCart(true);
+    setCartSaveMsg(null);
+    try {
+      const res = await fetch(`${MYSTERY_API_BASE_URL}/api/MysteryBox/SaveCartValue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: phone, cartValue: Math.round(payableAmount) })
+      });
+      let data = null;
+      try { data = await res.json(); } catch { /* empty body */ }
+      if (!res.ok) throw new Error(data?.message || `Request failed with status ${res.status}`);
+      setCartSaveMsg({ ok: true, text: `${data.message} (₹${data.cartValue})` });
+    } catch (err) {
+      setCartSaveMsg({ ok: false, text: err.message || 'Could not save the cart value.' });
+    } finally {
+      setIsSavingCart(false);
+    }
+  };
 
   // ── Coupon apply/remove ──
   const handleApplyCoupon = async () => {
@@ -463,6 +500,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setCouponError('');
     setOtpValue('');
     setOtpError('');
+    setCartSaveMsg(null);
     resetOfferUi();
     setIsQuotationListOpen(false);
     focusSearchInput();
@@ -478,6 +516,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setCouponError('');
     setOtpValue('');
     setOtpError('');
+    setCartSaveMsg(null);
     resetOfferUi();
     try {
       localStorage.removeItem('verifiedCoupon_pending');
@@ -656,6 +695,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setOtpValue('');
     setOtpError('');
     setPostSaleWarning('');
+    setCartSaveMsg(null);
     resetOfferUi();
     focusSearchInput();
   };
@@ -924,7 +964,23 @@ function BillingSection({ products = [], cart = [], setCart }) {
         >
           Quotation
         </button>
+        <button
+          className="bs-primary-button"
+          onClick={handleSaveCartValue}
+          disabled={!invoiceNumber || cart.length === 0 || isSavingCart}
+        >
+          {isSavingCart ? 'Saving...' : 'Save Cart Value'}
+        </button>
       </div>
+
+      {cartSaveMsg && (
+        <p
+          className={cartSaveMsg.ok ? 'bs-cart-save-ok' : 'bs-error-text'}
+          style={cartSaveMsg.ok ? { color: '#198754' } : undefined}
+        >
+          {cartSaveMsg.text}
+        </p>
+      )}
 
       {isPaymentWindowOpen && (
         <Payment
