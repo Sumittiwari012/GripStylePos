@@ -14,7 +14,7 @@ import { HistoryDialog, LogDialog } from "./Panels";
 //
 // Review (backend: POST /review)
 //   incharge : Verify  or  Send back, for a product / sub category / category
-//   owner    : Send back only
+//   owner    : the same as the incharge
 //   manager  : sees the state + note, recounts what was sent back
 
 const isDone = (s) => s === "Matched" || s === "Short" || s === "Excess";
@@ -62,10 +62,9 @@ export function StatusTree({ role, auditId, canAct = false, canReview = false, a
   const [toast, notify] = useToast();
   const [focus, setFocus] = useState(null); // product found by scanning: opens its category and highlights the row
 
-  const perm = {
-    verify: role === "incharge" && canAct,
-    sendBack: (role === "incharge" && canAct) || (role === "owner" && canReview),
-  };
+  // incharge and owner can do the same review actions (verify / send back)
+  const reviewer = (role === "incharge" && canAct) || (role === "owner" && canReview);
+  const perm = { verify: reviewer, sendBack: reviewer };
 
   useEffect(() => {
     if (!focus) return;

@@ -154,7 +154,15 @@ export function OwnerAudit() {
       </nav>
 
       {tab === "overview" && (started ? <MonitoringPanel who={who} auditId={auditId} refreshKey={tick} /> : <Card><p>Add an incharge and at least one manager in the Team tab, then start the audit. Progress appears here once counting begins.</p></Card>)}
-      {tab === "products" && started && <StatusTree role="owner" auditId={auditId} refreshKey={tick} />}
+      {tab === "products" && started && (
+        <StatusTree
+          role="owner"
+          auditId={auditId}
+          canReview={(a.status === "InProgress" || a.status === "Review") && !a.reportApproved}
+          refreshKey={tick}
+          onChanged={() => setTick((t) => t + 1)}
+        />
+      )}
       {tab === "team" && <TeamPanel who={who} auditId={auditId} auditStatus={a.status} isOwner />}
     </Shell>
   );

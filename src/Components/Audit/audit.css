@@ -211,3 +211,9 @@
 .au-report th.au-c-mgr, .au-report th.au-c-inc { white-space: normal; }
 
 @media print { .au-split { grid-template-columns: 1fr 1fr; } .au-sec { break-inside: avoid; } }
+
+/* ───── report: collapsible sub categories + overridden manager note ───── */
+.au-subdetails { border-top: 1px solid var(--line); padding-top: .3rem; }
+.au-subdetails > summary { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; cursor: pointer; font-weight: 600; padding: .35rem 0; list-style-position: inside; }
+.au-subdetails > summary .au-subtitle { font-size: .95rem; }
+.au-overridden { text-decoration: line-through; }

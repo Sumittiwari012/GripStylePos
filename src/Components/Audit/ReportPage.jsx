@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, fmtDate, qty, ROUTE_BASE, session } from "./api";
-import { ApprovalTag, Badge, Card, ErrorBox, Loading, Shell, Stat, useLoad, useToast } from "./ui";
+import { ApprovalTag, Badge, Card, ErrorBox, Field, Loading, Modal, Shell, Stat, useLoad, useToast } from "./ui";
 import { ReviewButtons, ReviewDialog, ReviewTag } from "./StatusTree";
 
 // Owner route:    /audit/owner/:auditId/report
 // Incharge route: /audit/incharge/report  (audit comes from the login session)
+//
+// Owner and incharge see the same report and can do the same review actions
+// (verify, send back, write a note that overrides the manager's note).
 //
 // The report has two sections shown side by side:
 //
@@ -83,12 +86,13 @@ export default function ReportPage({ who }) {
     [auditId, who]
   );
 
-  // verify / send back (incharge: both, owner: send back only; not after approval)
+  // verify / send back / note: incharge AND owner; not after approval
   const [toast, notify] = useToast();
   const [dlg, setDlg] = useState(null); // { action, scope, id, label }
   const editable = !!r && (r.status === "InProgress" || r.status === "Review") && !r.approval?.isApproved;
-  const perm = { verify: who === "member" && editable, sendBack: editable };
-  const review = (action, scope, id, label) => setDlg({ action, scope, id, label });
+  const perm = { verify: editable, sendBack: editable, note: editable };
+  const review = (action, scope, id, label) => setDlg({ kind: "review", action, scope, id, label });
+  const editNote = (line) => setDlg({ kind: "note", line });
 
   const groups = useMemo(
     () => (r ? mergeGroups(r.audited, r.negativeStock, r.soldOut) : []),
@@ -115,6 +119,30 @@ export default function ReportPage({ who }) {
       live: ok("live"),
       total: ok("total"),
     };
+  }, [all]);
+
+  // who did what: counting (managers) and review (incharge / owner)
+  const team = useMemo(() => {
+    const counting = new Map();
+    const reviewing = new Map();
+    for (const l of all) {
+      if (isCounted(l) && l.verifiedBy) {
+        const c = counting.get(l.verifiedBy) || { name: l.verifiedBy, counted: 0, matched: 0, short: 0, excess: 0 };
+        c.counted++;
+        if (l.status === "Matched") c.matched++;
+        if (l.status === "Short") c.short++;
+        if (l.status === "Excess") c.excess++;
+        counting.set(l.verifiedBy, c);
+      }
+      if (l.reviewedBy && l.reviewStatus && l.reviewStatus !== "None") {
+        const v = reviewing.get(l.reviewedBy) || { name: l.reviewedBy, verified: 0, sentBack: 0 };
+        if (l.reviewStatus === "Verified") v.verified++;
+        if (l.reviewStatus === "SentBack") v.sentBack++;
+        reviewing.set(l.reviewedBy, v);
+      }
+    }
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    return { counting: [...counting.values()].sort(byName), reviewing: [...reviewing.values()].sort(byName) };
   }, [all]);
 
   const term = q.trim().toLowerCase();
@@ -206,6 +234,39 @@ export default function ReportPage({ who }) {
             </section>
           </div>
 
+          <div className="au-split">
+            <section className="au-sec au-sec-mgr" aria-label="Counting work">
+              <header className="au-sec-head"><h2>Counting work</h2><p className="au-muted">Who counted the products (managers)</p></header>
+              {team.counting.length === 0 ? <p className="au-muted">Nothing counted yet.</p> : (
+                <div className="au-scroll">
+                  <table className="au-table au-table-tight">
+                    <thead><tr><th>Name</th><th className="au-num">Counted</th><th className="au-num">Matched</th><th className="au-num">Short</th><th className="au-num">Excess</th></tr></thead>
+                    <tbody>
+                      {team.counting.map((c) => (
+                        <tr key={c.name}><td>{c.name}</td><td className="au-num">{c.counted}</td><td className="au-num">{c.matched}</td><td className="au-num">{c.short}</td><td className="au-num">{c.excess}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+            <section className="au-sec au-sec-inc" aria-label="Review work">
+              <header className="au-sec-head"><h2>Review work</h2><p className="au-muted">What the incharge and owner verified or sent back</p></header>
+              {team.reviewing.length === 0 ? <p className="au-muted">Nothing reviewed yet.</p> : (
+                <div className="au-scroll">
+                  <table className="au-table au-table-tight">
+                    <thead><tr><th>Name</th><th className="au-num">Verified</th><th className="au-num">Sent back</th></tr></thead>
+                    <tbody>
+                      {team.reviewing.map((v) => (
+                        <tr key={v.name}><td>{v.name}</td><td className="au-num">{v.verified}</td><td className="au-num">{v.sentBack}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
+
           <Card title="Products">
             <div className="au-row" style={{ margin: "0 0 .8rem", alignItems: "center" }}>
               <input
@@ -227,14 +288,22 @@ export default function ReportPage({ who }) {
 
             {shown === 0 && <p className="au-muted">{term || only !== "all" ? "No product matches." : "No products."}</p>}
             {view.map((g) => (
-              <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} perm={perm} review={review} />
+              <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} subOpen={expand.n === 0 || expand.open || !!term} perm={perm} review={review} editNote={editNote} />
             ))}
           </Card>
 
-          {dlg && (
+          {dlg?.kind === "review" && (
             <ReviewDialog
               auditId={auditId}
               target={dlg}
+              onClose={() => setDlg(null)}
+              onDone={(msg) => { setDlg(null); notify(msg); reload(); }}
+            />
+          )}
+          {dlg?.kind === "note" && (
+            <NoteDialog
+              auditId={auditId}
+              line={dlg.line}
               onClose={() => setDlg(null)}
               onDone={(msg) => { setDlg(null); notify(msg); reload(); }}
             />
@@ -251,7 +320,7 @@ const tally = (items) => ({
   sentBack: items.filter((l) => l.reviewStatus === "SentBack").length,
 });
 
-function CategoryGroup({ g, open, perm, review }) {
+function CategoryGroup({ g, open, subOpen, perm, review, editNote }) {
   const items = g.subCategories.flatMap((sg) => sg.items);
   const showReview = perm.verify || perm.sendBack;
   const catId = items[0]?.categoryId;
@@ -281,22 +350,15 @@ function CategoryGroup({ g, open, perm, review }) {
         const st = tally(sg.items);
         const subId = sg.items[0]?.subCategoryId;
         return (
-        <div key={sg.subCategoryName} className="au-subgroup">
-          {/* 2. sub category */}
-          <h3>
-            {sg.subCategoryName} <span className="au-muted">({sg.items.length})</span>
-            {st.verified > 0 && <span className="au-chip au-chip-ok">{st.verified} verified</span>}
-            {st.sentBack > 0 && <span className="au-chip au-chip-bad">{st.sentBack} sent back</span>}
-            {showReview && subId > 0 && (
-              <span className="au-h3-actions">
-                <ReviewButtons
-                  perm={perm} counted={st.counted} verified={st.verified} sentBack={st.sentBack} label=" all"
-                  onVerify={() => review("Verify", "SubCategory", subId, sg.subCategoryName)}
-                  onSendBack={() => review("SendBack", "SubCategory", subId, sg.subCategoryName)}
-                />
-              </span>
-            )}
-          </h3>
+        <SubGroup key={sg.subCategoryName} initialOpen={subOpen} title={sg.subCategoryName} count={sg.items.length} st={st}
+          actions={showReview && subId > 0 && (
+            <ReviewButtons
+              perm={perm} counted={st.counted} verified={st.verified} sentBack={st.sentBack} label=" all"
+              onVerify={() => review("Verify", "SubCategory", subId, sg.subCategoryName)}
+              onSendBack={() => review("SendBack", "SubCategory", subId, sg.subCategoryName)}
+            />
+          )}
+        >
           <div className="au-scroll">
             <table className="au-table au-table-tight au-report">
               <thead>
@@ -311,7 +373,6 @@ function CategoryGroup({ g, open, perm, review }) {
                     <small>Total = Live stock + Balance</small>
                   </th>
                   <th rowSpan={2}>Remarks</th>
-                  <th rowSpan={2}>Status</th>
                   <th rowSpan={2}>Review</th>
                 </tr>
                 <tr>
@@ -326,25 +387,48 @@ function CategoryGroup({ g, open, perm, review }) {
                 </tr>
               </thead>
               <tbody>
-                {sg.items.map((l) => <Line key={`${l.productId}-${l.barcode}`} l={l} perm={perm} review={review} />)}
+                {sg.items.map((l) => <Line key={`${l.productId}-${l.barcode}`} l={l} perm={perm} review={review} editNote={editNote} />)}
               </tbody>
             </table>
           </div>
-        </div>
+        </SubGroup>
         );
       })}
     </details>
   );
 }
 
-function Line({ l, perm, review }) {
+// One sub category: opens and closes on its own. Review buttons sit in the heading.
+function SubGroup({ initialOpen, title, count, st, actions, children }) {
+  const [open, setOpen] = useState(initialOpen);
+  return (
+    <details className="au-subgroup au-subdetails" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>
+        <span className="au-subtitle">{title} <span className="au-muted">({count})</span></span>
+        {st.verified > 0 && <span className="au-chip au-chip-ok">{st.verified} verified</span>}
+        {st.sentBack > 0 && <span className="au-chip au-chip-bad">{st.sentBack} sent back</span>}
+        {actions && (
+          // clicking a button must not open / close the sub category
+          <span className="au-h3-actions" onClick={(e) => e.preventDefault()}>{actions}</span>
+        )}
+      </summary>
+      {open && children}
+    </details>
+  );
+}
+
+function Line({ l, perm, review, editNote }) {
   const counted = isCounted(l);
   const f = figures(l);
+  const mgrNote = [l.reasonCode, l.note].filter(Boolean).join(" · ");
   return (
     <tr>
       <td>
         {l.productName}
         <small className="au-block au-muted">{l.barcode}</small>
+        {counted && l.verifiedBy && (
+          <small className="au-block au-muted">Counted by {l.verifiedBy}{l.verifiedAt ? ` · ${fmtDate(l.verifiedAt)}` : ""}</small>
+        )}
       </td>
 
       {/* manager */}
@@ -359,12 +443,24 @@ function Line({ l, perm, review }) {
       <td className={`au-num au-c-inc ${tone(f.balance)}`}>{signed(f.balance)}</td>
       <td className="au-num au-c-inc"><strong>{show(f.total)}</strong></td>
 
-      <td className="au-note">{[l.reasonCode, l.note].filter(Boolean).join(" · ") || "–"}</td>
-      <td><Badge status={l.status || "Pending"} /></td>
+      {/* remarks: the incharge / owner note overrides the manager's note */}
+      <td className="au-note">
+        {l.reviewNote ? (
+          <>
+            <div><strong>Incharge:</strong> {l.reviewNote}{l.reviewedBy && <small className="au-muted"> ({l.reviewedBy})</small>}</div>
+            {mgrNote && <small className="au-block au-muted au-overridden" title="Manager's note (overridden)">Manager: {mgrNote}</small>}
+          </>
+        ) : (mgrNote || "–")}
+        {perm.note && l.verificationId && (
+          <div>
+            <button className="au-link" onClick={() => editNote(l)}>{l.reviewNote ? "Edit note" : "Add note"}</button>
+          </div>
+        )}
+      </td>
 
       {/* 1. product */}
       <td className="au-note">
-        <ReviewTag state={l.reviewStatus} note={l.reviewNote} by={l.reviewedBy} />
+        <ReviewTag state={l.reviewStatus} by={l.reviewedBy} />
         {l.verificationId && (perm.verify || perm.sendBack) && (
           <div className="au-rowactions-wrap">
             <ReviewButtons
@@ -380,5 +476,34 @@ function Line({ l, perm, review }) {
         )}
       </td>
     </tr>
+  );
+}
+
+// Incharge / owner note on one product. It is shown instead of the manager's note
+// (the manager's note stays visible, struck through). Leave it empty to remove it.
+function NoteDialog({ auditId, line, onClose, onDone }) {
+  const [note, setNote] = useState(line.reviewNote || "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const mgrNote = [line.reasonCode, line.note].filter(Boolean).join(" · ");
+
+  const save = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api(`/${auditId}/items/${line.verificationId}/note`, { method: "POST", body: { note: note.trim() || null } });
+      onDone(r.message);
+    } catch (e) { setErr(e); setBusy(false); }
+  };
+
+  return (
+    <Modal title={`Note: ${line.productName}`} onClose={onClose}>
+      <p className="au-muted">{line.barcode}</p>
+      <p><strong>Manager's note:</strong> {mgrNote || <span className="au-muted">none</span>}</p>
+      <Field label="Your note (replaces the manager's note in the report)">
+        <textarea className="au-input" rows={3} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} autoFocus />
+      </Field>
+      <ErrorBox error={err} />
+      <button className="au-btn au-btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : note.trim() ? "Save note" : "Remove note"}</button>
+    </Modal>
   );
 }
