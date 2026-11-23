@@ -264,6 +264,20 @@ function BillingSection({ products = [], cart = [], setCart }) {
   const currentPayments = paymentsByInvoice[invoiceNumber] ?? [];
   const amountPaid = currentPayments.reduce((sum, p) => sum + p.amount, 0);
 
+  // Auto-fill the Save Cart Value fields from the bill: the customer's number and the payable amount.
+  // They stay editable, and refill whenever the customer or the payable amount changes.
+  useEffect(() => {
+    const ph = String(selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber ?? '')
+      .replace(/\D/g, '')
+      .slice(-10);
+    if (ph) setCartPhone(ph);
+  }, [selectedCustomer]);
+
+  useEffect(() => {
+    setCartAmount(payableAmount > 0 ? String(Math.round(payableAmount)) : '');
+    setCartSaveMsg(null);
+  }, [payableAmount]);
+
   // ── Save cart value for the customer's phone number (adds the number if new, else updates) ──
   const handleSaveCartValue = async () => {
     // keep the last 10 digits so "+91 98765 43210" also works
@@ -290,8 +304,6 @@ function BillingSection({ products = [], cart = [], setCart }) {
       try { data = await res.json(); } catch { /* empty body */ }
       if (!res.ok) throw new Error(data?.message || `Request failed with status ${res.status}`);
       setCartSaveMsg({ ok: true, text: `${data.message} (₹${data.cartValue})` });
-      setCartPhone('');
-      setCartAmount('');
     } catch (err) {
       setCartSaveMsg({ ok: false, text: err.message || 'Could not save the cart value.' });
     } finally {
