@@ -110,6 +110,14 @@ export function Card({ title, right, children, className = "" }) {
   );
 }
 
+// MRP and size of a product, shown under the barcode / name. Renders nothing if the server sends neither.
+export function ProductMeta({ mrp, size }) {
+  const parts = [];
+  if (mrp !== null && mrp !== undefined && mrp !== "") parts.push(`MRP ₹${Number(mrp).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`);
+  if (size) parts.push(`Size ${size}`);
+  return parts.length ? <small className="au-block au-muted">{parts.join(" · ")}</small> : null;
+}
+
 export const Badge = ({ status }) => <span className={`au-badge au-s-${status}`}>{status}</span>;
 
 // state of a subordinate's count: AwaitingReview | Accepted | Rejected

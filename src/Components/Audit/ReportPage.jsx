@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, fmtDate, qty, ROUTE_BASE, session } from "./api";
 import { Deck, ViewToggle, useViewMode } from "./CardView";
-import { ApprovalTag, Bar, Badge, Card, ErrorBox, Field, Loading, Modal, Shell, Stat, useLoad, useToast } from "./ui";
+import { ApprovalTag, Bar, Badge, Card, ErrorBox, Field, FindBar, Loading, Modal, ProductMeta, Shell, Stat, useLoad, useToast } from "./ui";
 import { ReviewButtons, ReviewDialog, ReviewTag } from "./StatusTree";
 
 // Owner route:    /audit/owner/:auditId/report
@@ -41,6 +41,7 @@ function figures(l) {
   return { stockAt, physical, balance, live, total };
 }
 
+const lineKey = (l) => l.verificationId ?? `${l.productId}-${l.barcode}`;
 const show = (v) => (v === null ? "–" : qty(v));
 const signed = (v) => (v === null ? "–" : `${v > 0 ? "+" : ""}${qty(v)}`);
 const tone = (v) => (v === null || v === 0 ? "" : v < 0 ? "au-neg" : "au-pos");
@@ -83,6 +84,7 @@ export default function ReportPage({ who }) {
   const [expand, setExpand] = useState({ open: false, n: 0 });
   const [layout, setLayout] = useViewMode(); // table | card
   const [doneTick, setDoneTick] = useState(0); // a verify / send back went through
+  const [focus, setFocus] = useState(null); // product found by barcode: { key, categoryName, subCategoryName, nonce }
 
   const { data: r, error, loading, reload } = useLoad(
     () => api(`/${auditId}/report?includeHistory=false`, { who }),
@@ -147,6 +149,36 @@ export default function ReportPage({ who }) {
     const byName = (a, b) => a.name.localeCompare(b.name);
     return { counting: [...counting.values()].sort(byName), reviewing: [...reviewing.values()].sort(byName) };
   }, [all]);
+
+  // the found row stays highlighted for a few seconds
+  useEffect(() => {
+    if (!focus) return;
+    const t = setTimeout(() => setFocus(null), 8000);
+    return () => clearTimeout(t);
+  }, [focus]);
+
+  // Type or scan a barcode -> open its category and sub category and land on the product.
+  const locate = (code) => {
+    const c = code.trim().toLowerCase();
+    if (!c) return;
+    const find = (test) => {
+      const hits = [];
+      for (const g of groups) for (const sg of g.subCategories) for (const l of sg.items) if (test(l)) hits.push({ l, g, sg });
+      return hits;
+    };
+    let hits = find((l) => (l.barcode || "").toLowerCase() === c);
+    if (hits.length === 0) hits = find((l) => (l.barcode || "").toLowerCase().includes(c) || l.productName.toLowerCase().includes(c));
+    if (hits.length === 0) { notify("No product with this barcode is in the report.", "err"); return; }
+    if (hits.length > 1) {
+      setQ(code.trim());
+      notify(`${hits.length} products match. Narrow it down in the list below, or enter the full barcode.`, "err");
+      return;
+    }
+    const { l, g, sg } = hits[0];
+    setQ(""); setOnly("all");
+    setFocus({ key: lineKey(l), categoryName: g.categoryName, subCategoryName: sg.subCategoryName, nonce: Date.now() });
+    notify(`${l.productName}: ${g.categoryName} › ${sg.subCategoryName}`);
+  };
 
   const term = q.trim().toLowerCase();
   const view = useMemo(() => {
@@ -271,6 +303,7 @@ export default function ReportPage({ who }) {
           </div>
 
           <Card title="Products" right={<ViewToggle value={layout} onChange={setLayout} />}>
+            <FindBar onFind={locate} />
             <div className="au-row" style={{ margin: "0 0 .8rem", alignItems: "center" }}>
               <input
                 className="au-input au-input-sm"
@@ -291,9 +324,9 @@ export default function ReportPage({ who }) {
 
             {shown === 0 && <p className="au-muted">{term || only !== "all" ? "No product matches." : "No products."}</p>}
             {layout === "card"
-              ? <ReportCards groups={view} perm={perm} review={review} editNote={editNote} doneTick={doneTick} />
+              ? <ReportCards groups={view} perm={perm} review={review} editNote={editNote} doneTick={doneTick} focus={focus} />
               : view.map((g) => (
-                <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} subOpen={expand.n === 0 || expand.open || !!term} perm={perm} review={review} editNote={editNote} />
+                <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} subOpen={expand.n === 0 || expand.open || !!term} perm={perm} review={review} editNote={editNote} focus={focus} />
               ))}
           </Card>
 
@@ -325,13 +358,17 @@ const tally = (items) => ({
   sentBack: items.filter((l) => l.reviewStatus === "SentBack").length,
 });
 
-function CategoryGroup({ g, open, subOpen, perm, review, editNote }) {
+function CategoryGroup({ g, open, subOpen, perm, review, editNote, focus }) {
+  const [isOpen, setIsOpen] = useState(open);
+  const mine = !!focus && focus.categoryName === g.categoryName;
+  useEffect(() => { setIsOpen(open); }, [open]);
+  useEffect(() => { if (mine) setIsOpen(true); }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   const items = g.subCategories.flatMap((sg) => sg.items);
   const showReview = perm.verify || perm.sendBack;
   const catId = items[0]?.categoryId;
   const ct = tally(items);
   return (
-    <details className="au-group" open={open}>
+    <details className="au-group" open={isOpen} onToggle={(e) => setIsOpen(e.currentTarget.open)}>
       <summary>
         {g.categoryName}
         <span className="au-chip">{items.length} products</span>
@@ -355,7 +392,7 @@ function CategoryGroup({ g, open, subOpen, perm, review, editNote }) {
         const st = tally(sg.items);
         const subId = sg.items[0]?.subCategoryId;
         return (
-        <SubGroup key={sg.subCategoryName} initialOpen={subOpen} title={sg.subCategoryName} count={sg.items.length} st={st}
+        <SubGroup key={sg.subCategoryName} initialOpen={subOpen} focus={mine && focus.subCategoryName === sg.subCategoryName ? focus : null} title={sg.subCategoryName} count={sg.items.length} st={st}
           actions={showReview && subId > 0 && (
             <ReviewButtons
               perm={perm} counted={st.counted} verified={st.verified} sentBack={st.sentBack} label=" all"
@@ -392,7 +429,7 @@ function CategoryGroup({ g, open, subOpen, perm, review, editNote }) {
                 </tr>
               </thead>
               <tbody>
-                {sg.items.map((l) => <Line key={`${l.productId}-${l.barcode}`} l={l} perm={perm} review={review} editNote={editNote} />)}
+                {sg.items.map((l) => <Line key={`${l.productId}-${l.barcode}`} l={l} hit={focus?.key === lineKey(l)} perm={perm} review={review} editNote={editNote} />)}
               </tbody>
             </table>
           </div>
@@ -404,8 +441,9 @@ function CategoryGroup({ g, open, subOpen, perm, review, editNote }) {
 }
 
 // One sub category: opens and closes on its own. Review buttons sit in the heading.
-function SubGroup({ initialOpen, title, count, st, actions, children }) {
+function SubGroup({ initialOpen, focus, title, count, st, actions, children }) {
   const [open, setOpen] = useState(initialOpen);
+  useEffect(() => { if (focus) setOpen(true); }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <details className="au-subgroup au-subdetails" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
@@ -422,15 +460,18 @@ function SubGroup({ initialOpen, title, count, st, actions, children }) {
   );
 }
 
-function Line({ l, perm, review, editNote }) {
+function Line({ l, hit, perm, review, editNote }) {
+  const ref = useRef(null);
+  useEffect(() => { if (hit) ref.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }, [hit]);
   const counted = isCounted(l);
   const f = figures(l);
   const mgrNote = [l.reasonCode, l.note].filter(Boolean).join(" · ");
   return (
-    <tr>
+    <tr ref={ref} id={`au-row-${lineKey(l)}`} className={hit ? "au-row-hit" : ""}>
       <td>
         {l.productName}
         <small className="au-block au-muted">{l.barcode}</small>
+        <ProductMeta mrp={l.mrp} size={l.size} />
         {counted && l.verifiedBy && (
           <small className="au-block au-muted">Counted by {l.verifiedBy}{l.verifiedAt ? ` · ${fmtDate(l.verifiedAt)}` : ""}</small>
         )}
@@ -514,7 +555,7 @@ function NoteDialog({ auditId, line, onClose, onDone }) {
 }
 
 // ───────────── card view: category -> sub category -> swipe through products ─────────────
-function ReportCards({ groups, perm, review, editNote, doneTick }) {
+function ReportCards({ groups, perm, review, editNote, doneTick, focus }) {
   const [catName, setCatName] = useState(null);
   const [subName, setSubName] = useState(null);
   const [idx, setIdx] = useState(0);
@@ -536,6 +577,16 @@ function ReportCards({ groups, perm, review, editNote, doneTick }) {
     const pos = ss.items.findIndex((x) => x.verificationId === a.id);
     setIdx(Math.max(0, Math.min(pos >= 0 ? pos + 1 : a.idx, ss.items.length - 1)));
   }, [groups]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a barcode was found: open its category, sub category and product
+  useEffect(() => {
+    if (!focus) return;
+    const gi = groups.find((x) => x.categoryName === focus.categoryName);
+    const si = gi?.subCategories.find((x) => x.subCategoryName === focus.subCategoryName);
+    const pos = si ? si.items.findIndex((x) => lineKey(x) === focus.key) : -1;
+    if (pos < 0) return;
+    setCatName(gi.categoryName); setSubName(si.subCategoryName); setIdx(pos);
+  }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const chips = (t) => (
     <span className="au-subcard-chips">
@@ -630,7 +681,8 @@ function ReportCards({ groups, perm, review, editNote, doneTick }) {
         items={sg.items}
         idx={idx}
         setIdx={setIdx}
-        getKey={(l) => l.verificationId ?? `${l.productId}-${l.barcode}`}
+        getKey={lineKey}
+        hitKey={focus?.key}
         render={(l) => {
           const counted = isCounted(l);
           const f = figures(l);
@@ -648,6 +700,7 @@ function ReportCards({ groups, perm, review, editNote, doneTick }) {
                 <div>
                   <div className="au-pc-barcode">{l.productName}</div>
                   <div className="au-pc-name">{l.barcode}</div>
+                  <ProductMeta mrp={l.mrp} size={l.size} />
                   {counted && l.verifiedBy && <small className="au-block au-muted">Counted by {l.verifiedBy}{l.verifiedAt ? ` · ${fmtDate(l.verifiedAt)}` : ""}</small>}
                 </div>
                 <div style={{ textAlign: "right" }}>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, qty } from "./api";
-import { Bar, Badge, BarcodeInput, ErrorBox, Loading, useLoad } from "./ui";
+import { Bar, Badge, BarcodeInput, ErrorBox, Loading, ProductMeta, useLoad } from "./ui";
 
 // ─────────────────────────────────────────────────────────────
 // Card view for the Products tree (owner / incharge / manager).
@@ -267,6 +267,7 @@ export function CardBody({ cat, role, auditId, who, canAct, allowSentBack, perm,
                 <div>
                   <div className="au-pc-barcode">{it.barcode}</div>
                   <div className="au-pc-name">{it.productName}</div>
+                  <ProductMeta mrp={it.mrp} size={it.size} />
                 </div>
                 <Badge status={it.status} />
               </div>

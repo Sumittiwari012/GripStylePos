@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, qty } from "./api";
-import { Badge, BarcodeInput, FindBar, CountForm, Card, ErrorBox, Field, Loading, Modal, Stat, useLoad, useToast } from "./ui";
+import { Badge, BarcodeInput, FindBar, CountForm, ProductMeta, Card, ErrorBox, Field, Loading, Modal, Stat, useLoad, useToast } from "./ui";
 import { HistoryDialog, LogDialog } from "./Panels";
 import { CardBody, ViewToggle, useViewMode } from "./CardView";
 
@@ -286,6 +286,7 @@ function CategoryBody({ cat, role, auditId, who, canAct, allowSentBack, perm, ve
                           <strong>{it.barcode}</strong>
                           {it.stockKind !== "InStock" && <span className="au-chip">{it.stockKind === "SoldOut" ? "Sold out" : "Negative stock"}</span>}
                           <small className="au-block au-muted">{it.productName}</small>
+                          <ProductMeta mrp={it.mrp} size={it.size} />
                         </td>
                         <td className="au-num">{qty(it.systemQty)}</td>
                         <td className="au-num">{counted ? qty(it.physicalQty) : "–"}</td>
