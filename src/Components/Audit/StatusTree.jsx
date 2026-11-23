@@ -20,7 +20,7 @@ import { HistoryDialog, LogDialog } from "./Panels";
 const isDone = (s) => s === "Matched" || s === "Short" || s === "Excess";
 const REVIEW_LABEL = { Verified: "Verified", SentBack: "Sent back" };
 
-function ReviewTag({ state, note, by }) {
+export function ReviewTag({ state, note, by }) {
   if (!state || state === "None") return <span className="au-muted">–</span>;
   return (
     <>
@@ -32,7 +32,7 @@ function ReviewTag({ state, note, by }) {
 }
 
 // Verify / Send back buttons for one scope (product, sub category or category)
-function ReviewButtons({ perm, counted, verified, sentBack, onVerify, onSendBack, label }) {
+export function ReviewButtons({ perm, counted, verified, sentBack, onVerify, onSendBack, label }) {
   // counted / verified / sentBack are numbers for a group, or booleans-as-numbers (1/0) for a product
   const canV = perm.verify && counted - verified > 0;
   const canB = perm.sendBack && counted - sentBack > 0;
@@ -314,7 +314,7 @@ function CategoryBody({ cat, role, auditId, who, canAct, allowSentBack, perm, ve
 }
 
 // Verify or send back: product / sub category / category
-function ReviewDialog({ auditId, target, onClose, onDone }) {
+export function ReviewDialog({ auditId, target, onClose, onDone }) {
   const verify = target.action === "Verify";
   const scopeLabel = { Product: "product", SubCategory: "sub category", Category: "category" }[target.scope];
   const [note, setNote] = useState("");
