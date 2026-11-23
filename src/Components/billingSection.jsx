@@ -123,6 +123,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
   const [offers, setOffers] = useState([]);
   const [dismissedReminders, setDismissedReminders] = useState(new Set());
   const [toast, setToast] = useState('');
+  const [offersOpen, setOffersOpen] = useState(false); // Offers panel is collapsed by default
   const seenReminderIds = useRef(new Set());
   const toastTimer = useRef(null);
 
@@ -212,6 +213,22 @@ function BillingSection({ products = [], cart = [], setCart }) {
     [engineLines, appliedCoupon]
   );
   const { applications, reminders } = useMemo(() => safeEvaluate(enrichedCart, offers), [enrichedCart, offers]);
+
+  // Collapse repeated applications of the same offer into a single row
+  // (e.g. 25 x "paper soap off" -> one row with count 25 and the total saved)
+  const groupedApplications = useMemo(() => {
+    const map = new Map();
+    applications.forEach((a) => {
+      const id = a.offer.id;
+      const g = map.get(id) ?? { offer: a.offer, count: 0, saved: 0 };
+      g.count += 1;
+      g.saved += Number(a.discount) || 0;
+      map.set(id, g);
+    });
+    return [...map.values()];
+  }, [applications]);
+
+  const totalOfferSavings = groupedApplications.reduce((s, g) => s + g.saved, 0);
 
   // A coupon overrides non-immune offers, so reminding about them is just noise
   const visibleReminders = reminders.filter(
@@ -867,33 +884,63 @@ function BillingSection({ products = [], cart = [], setCart }) {
         })}
       </div>
 
-      {(applications.length > 0 || visibleReminders.length > 0) && (
+      {(groupedApplications.length > 0 || visibleReminders.length > 0) && (
         <div className="bs-offers-panel">
-          <h3 className="bs-section-title">Offers</h3>
+          <button
+            type="button"
+            onClick={() => setOffersOpen((o) => !o)}
+            aria-expanded={offersOpen}
+            style={{
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '6px 8px',
+              background: '#f3f4f6',
+              border: '1px solid #e5e7eb',
+              borderRadius: 6,
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              textAlign: 'left'
+            }}
+          >
+            <span>
+              Offers
+              {groupedApplications.length > 0 &&
+                ` · ${groupedApplications.length} applied · saved ₹${totalOfferSavings.toFixed(2)}`}
+              {visibleReminders.length > 0 && ` · 💡 ${visibleReminders.length}`}
+            </span>
+            <span>{offersOpen ? '▲' : '▼'}</span>
+          </button>
 
-          {applications.map((a, i) => {
-            const overridden = overriddenOfferIds.includes(a.offer.id);
-            return (
-              <p key={i} style={{ color: overridden ? '#6b7280' : '#198754', margin: '2px 0' }}>
-                {overridden
-                  ? `↪ ${a.offer.name} replaced by coupon (not combinable)`
-                  : `✓ ${a.offer.name} applied: saved ₹${a.discount.toFixed(2)}${
-                      appliedCoupon && a.offer.immuneToCoupon ? ' (coupon stacked on top)' : ''
-                    }`}
-              </p>
-            );
-          })}
+          {offersOpen && (
+            <div style={{ maxHeight: 120, overflowY: 'auto', padding: '4px 8px' }}>
+              {groupedApplications.map((g) => {
+                const overridden = overriddenOfferIds.includes(g.offer.id);
+                return (
+                  <p key={g.offer.id} style={{ color: overridden ? '#6b7280' : '#198754', margin: '2px 0' }}>
+                    {overridden
+                      ? `↪ ${g.offer.name} replaced by coupon (not combinable)`
+                      : `✓ ${g.offer.name}${g.count > 1 ? ` ×${g.count}` : ''}: saved ₹${g.saved.toFixed(2)}${
+                          appliedCoupon && g.offer.immuneToCoupon ? ' (coupon stacked on top)' : ''
+                        }`}
+                  </p>
+                );
+              })}
 
-          {visibleReminders.map((r) => (
-            <div key={r.id} style={{ color: '#b45309', margin: '4px 0', display: 'flex', gap: 8 }}>
-              <span style={{ flex: 1 }}>💡 {r.message}</span>
-              <button
-                onClick={() => setDismissedReminders((p) => new Set(p).add(r.id))}
-                style={{ border: 'none', background: 'none', cursor: 'pointer' }}
-                aria-label="Dismiss reminder"
-              >✕</button>
+              {visibleReminders.map((r) => (
+                <div key={r.id} style={{ color: '#b45309', margin: '4px 0', display: 'flex', gap: 8 }}>
+                  <span style={{ flex: 1 }}>💡 {r.message}</span>
+                  <button
+                    onClick={() => setDismissedReminders((p) => new Set(p).add(r.id))}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+                    aria-label="Dismiss reminder"
+                  >✕</button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
 
