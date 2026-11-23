@@ -114,6 +114,8 @@ function BillingSection({ products = [], cart = [], setCart }) {
   const [postSaleWarning, setPostSaleWarning] = useState('');
 
   // ── Cart value (saved against the customer's phone number) ──
+  const [cartPhone, setCartPhone] = useState('');
+  const [cartAmount, setCartAmount] = useState('');
   const [isSavingCart, setIsSavingCart] = useState(false);
   const [cartSaveMsg, setCartSaveMsg] = useState(null); // { ok, text }
 
@@ -265,11 +267,14 @@ function BillingSection({ products = [], cart = [], setCart }) {
   // ── Save cart value for the customer's phone number (adds the number if new, else updates) ──
   const handleSaveCartValue = async () => {
     // keep the last 10 digits so "+91 98765 43210" also works
-    const phone = String(selectedCustomer?.mobileNumber ?? selectedCustomer?.phoneNumber ?? '')
-      .replace(/\D/g, '')
-      .slice(-10);
-    if (!phone) {
-      setCartSaveMsg({ ok: false, text: 'Add a customer first.' });
+    const phone = cartPhone.replace(/\D/g, '').slice(-10);
+    if (!/^[6-9]\d{9}$/.test(phone)) {
+      setCartSaveMsg({ ok: false, text: 'Enter a valid 10 digit mobile number.' });
+      return;
+    }
+    const amount = Math.round(Number(cartAmount));
+    if (cartAmount === '' || Number.isNaN(amount) || amount < 0) {
+      setCartSaveMsg({ ok: false, text: 'Enter a valid cart amount.' });
       return;
     }
 
@@ -279,12 +284,14 @@ function BillingSection({ products = [], cart = [], setCart }) {
       const res = await fetch(`${MYSTERY_API_BASE_URL}/api/MysteryBox/SaveCartValue`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber: phone, cartValue: Math.round(payableAmount) })
+        body: JSON.stringify({ phoneNumber: phone, cartValue: amount })
       });
       let data = null;
       try { data = await res.json(); } catch { /* empty body */ }
       if (!res.ok) throw new Error(data?.message || `Request failed with status ${res.status}`);
       setCartSaveMsg({ ok: true, text: `${data.message} (₹${data.cartValue})` });
+      setCartPhone('');
+      setCartAmount('');
     } catch (err) {
       setCartSaveMsg({ ok: false, text: err.message || 'Could not save the cart value.' });
     } finally {
@@ -500,7 +507,6 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setCouponError('');
     setOtpValue('');
     setOtpError('');
-    setCartSaveMsg(null);
     resetOfferUi();
     setIsQuotationListOpen(false);
     focusSearchInput();
@@ -516,7 +522,6 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setCouponError('');
     setOtpValue('');
     setOtpError('');
-    setCartSaveMsg(null);
     resetOfferUi();
     try {
       localStorage.removeItem('verifiedCoupon_pending');
@@ -695,7 +700,6 @@ function BillingSection({ products = [], cart = [], setCart }) {
     setOtpValue('');
     setOtpError('');
     setPostSaleWarning('');
-    setCartSaveMsg(null);
     resetOfferUi();
     focusSearchInput();
   };
@@ -719,6 +723,40 @@ function BillingSection({ products = [], cart = [], setCart }) {
         </button>
         {isQuotationListOpen && (
           <Quotation onClose={() => setIsQuotationListOpen(false)} onLoadQuotation={handleLoadQuotation} />
+        )}
+      </div>
+
+      <div className="bs-coupon-container" style={{ marginBottom: 12 }}>
+        <h3 className="bs-section-title">Save Cart Value</h3>
+        <div className="bs-coupon-row">
+          <input
+            type="tel"
+            inputMode="numeric"
+            placeholder="Phone number"
+            value={cartPhone}
+            onChange={(e) => setCartPhone(e.target.value)}
+            className="bs-coupon-input"
+            disabled={isSavingCart}
+          />
+          <input
+            type="number"
+            inputMode="numeric"
+            min="0"
+            placeholder="Cart amount"
+            value={cartAmount}
+            onChange={(e) => setCartAmount(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCartValue(); }}
+            className="bs-coupon-input"
+            disabled={isSavingCart}
+          />
+          <button className="bs-coupon-apply-button" onClick={handleSaveCartValue} disabled={isSavingCart}>
+            {isSavingCart ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+        {cartSaveMsg && (
+          <p className={cartSaveMsg.ok ? '' : 'bs-error-text'} style={cartSaveMsg.ok ? { color: '#198754' } : undefined}>
+            {cartSaveMsg.text}
+          </p>
         )}
       </div>
 
@@ -964,23 +1002,7 @@ function BillingSection({ products = [], cart = [], setCart }) {
         >
           Quotation
         </button>
-        <button
-          className="bs-primary-button"
-          onClick={handleSaveCartValue}
-          disabled={!invoiceNumber || cart.length === 0 || isSavingCart}
-        >
-          {isSavingCart ? 'Saving...' : 'Save Cart Value'}
-        </button>
       </div>
-
-      {cartSaveMsg && (
-        <p
-          className={cartSaveMsg.ok ? 'bs-cart-save-ok' : 'bs-error-text'}
-          style={cartSaveMsg.ok ? { color: '#198754' } : undefined}
-        >
-          {cartSaveMsg.text}
-        </p>
-      )}
 
       {isPaymentWindowOpen && (
         <Payment
