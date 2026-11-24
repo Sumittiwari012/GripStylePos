@@ -4,7 +4,7 @@ import "./storeLogin.css";
 
 // ─────────────────────────────────────────────────────────────
 // Store user login. Three steps, matching StoreController:
-//   1. VerifyStore     store id
+//   1. GetStores + VerifyStore   pick the store from a dropdown
 //   2. SendLoginOtp    phone number (must belong to a user of that store) -> OTP on WhatsApp
 //   3. VerifyLoginOtp  OTP -> login complete
 // Edit the two settings below to match your project.
@@ -63,12 +63,26 @@ async function post(path, body) {
   return data;
 }
 
+async function get(path) {
+  let res;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/Store/${path}`);
+  } catch {
+    throw new Error("Cannot reach the server. Check your connection and try again.");
+  }
+  if (!res.ok) throw new Error("Could not load the stores. Please try again.");
+  return res.json();
+}
+
 const onlyDigits = (v) => v.replace(/\D/g, "");
 
 export default function StoreLogin() {
   const nav = useNavigate();
   const [step, setStep] = useState("store"); // store -> phone -> otp
+  const [stores, setStores] = useState([]);
+  const [storesState, setStoresState] = useState("loading"); // loading | ready | failed
   const [storeId, setStoreId] = useState("");
+  const [storeName, setStoreName] = useState("");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [masked, setMasked] = useState("");
@@ -81,6 +95,25 @@ export default function StoreLogin() {
   useEffect(() => {
     if (storeSession.get()?.userId) nav(STORE_HOME, { replace: true });
   }, [nav]);
+
+  // Load the stores for the dropdown
+  const loadStores = async () => {
+    setError("");
+    setStoresState("loading");
+    try {
+      const r = await get("GetStores");
+      setStores(r.stores || []);
+      setStoresState("ready");
+    } catch (e) {
+      setError(e.message);
+      setStoresState("failed");
+    }
+  };
+
+  useEffect(() => {
+    loadStores();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Resend countdown
   useEffect(() => {
@@ -110,7 +143,8 @@ export default function StoreLogin() {
   const verifyStore = (e) => {
     e.preventDefault();
     run(async () => {
-      await post("VerifyStore", { storeId: Number(storeId) });
+      const r = await post("VerifyStore", { storeId: Number(storeId) });
+      setStoreName(r.storeName || `Store ${storeId}`);
       setStep("phone");
     });
   };
@@ -141,6 +175,7 @@ export default function StoreLogin() {
         userName: r.userName,
         userTypeId: r.userTypeId,
         storeId: r.storeId,
+        storeName: r.storeName,
         mobileNumber: r.mobileNumber,
         loggedInAt: new Date().toISOString(),
       });
@@ -150,6 +185,7 @@ export default function StoreLogin() {
 
   const changeStore = () => {
     setStep("store");
+    setStoreName("");
     setPhone("");
     setOtp("");
     setError("");
@@ -170,7 +206,7 @@ export default function StoreLogin() {
       <main className="sl-card">
         <h1 className="sl-title">Store login</h1>
         <p className="sl-sub">
-          {step === "store" && "Enter your store id to begin."}
+          {step === "store" && "Choose your store to begin."}
           {step === "phone" && "Enter the phone number registered for this store. We send a code on WhatsApp."}
           {step === "otp" && `Enter the 4-digit code sent to ${masked} on WhatsApp. It is valid for 5 minutes.`}
         </p>
@@ -182,25 +218,42 @@ export default function StoreLogin() {
             <div className="sl-step-body">
               {storeDone ? (
                 <div className="sl-summary">
-                  <span>Store <strong>{storeId}</strong> verified</span>
+                  <span><strong>{storeName}</strong> verified</span>
                   <button type="button" className="sl-link" onClick={changeStore} disabled={busy}>Change</button>
                 </div>
               ) : (
                 <form onSubmit={verifyStore} className="sl-form">
-                  <label className="sl-label" htmlFor="sl-store">Store id</label>
-                  <input
+                  <label className="sl-label" htmlFor="sl-store">Store</label>
+                  <select
                     id="sl-store"
                     ref={inputRef}
-                    className="sl-input"
-                    inputMode="numeric"
-                    autoComplete="off"
+                    className="sl-input sl-select"
                     value={storeId}
-                    onChange={(e) => setStoreId(onlyDigits(e.target.value))}
+                    onChange={(e) => setStoreId(e.target.value)}
+                    disabled={storesState !== "ready" || busy}
                     required
-                  />
-                  <button className="sl-btn" disabled={busy || !storeId}>
-                    {busy ? "Checking…" : "Verify store"}
-                  </button>
+                  >
+                    <option value="">
+                      {storesState === "loading" ? "Loading stores…" : storesState === "failed" ? "Could not load stores" : "Select your store"}
+                    </option>
+                    {stores.map((st) => (
+                      <option key={st.storeId} value={st.storeId}>
+                        {st.storeName}
+                      </option>
+                    ))}
+                  </select>
+                  {storesState === "ready" && stores.length === 0 && (
+                    <p className="sl-hint">No stores have been set up yet.</p>
+                  )}
+                  {storesState === "failed" ? (
+                    <button type="button" className="sl-btn" onClick={loadStores}>
+                      Try again
+                    </button>
+                  ) : (
+                    <button className="sl-btn" disabled={busy || !storeId}>
+                      {busy ? "Checking…" : "Continue"}
+                    </button>
+                  )}
                 </form>
               )}
             </div>

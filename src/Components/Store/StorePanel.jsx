@@ -33,7 +33,7 @@ export default function StorePanel() {
     <div className="sp-page">
       <header className="sp-header">
         <div className="sp-header-main">
-          <span className="sp-store">Store {s.storeId}</span>
+          <span className="sp-store">{s.storeName || `Store ${s.storeId}`}</span>
           <span className="sp-user">{s.userName}</span>
         </div>
         <button type="button" className="sp-logout" onClick={logout}>
@@ -49,7 +49,7 @@ export default function StorePanel() {
           <dl className="sp-details">
             <div>
               <dt>Store</dt>
-              <dd>{s.storeId}</dd>
+              <dd>{s.storeName || s.storeId}</dd>
             </div>
             <div>
               <dt>Name</dt>

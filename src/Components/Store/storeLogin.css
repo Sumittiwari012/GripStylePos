@@ -270,3 +270,20 @@
     padding-left: 0.4em;
   }
 }
+
+.sl-select {
+  appearance: auto;
+  cursor: pointer;
+}
+
+.sl-select:disabled {
+  background: #f3f5f9;
+  color: var(--sl-muted);
+  cursor: not-allowed;
+}
+
+.sl-hint {
+  margin: 0;
+  color: var(--sl-muted);
+  font-size: 0.9rem;
+}
