@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { getJson } from "./storeApi";
 import { ReceiveForm, CancelForm } from "./TransferActions";
 import CreateDispatch from "./CreateDispatch";
+import PrintBill from "./PrintBill";
 import "./dispatchSection.css";
 
 // "Dispatch" section of the store panel (no route of its own).
-// "Create dispatch" opens the form in CreateDispatch.jsx above the lists.
+// "Create dispatch" opens the form in CreateDispatch.jsx above the lists; a new dispatch then opens its
+// printable bill (PrintBill.jsx). "Print bill" on any transfer opens the same bill again.
 //
 // Uses one endpoint of StoreController:
 //   GET api/Store/GetGodownDispatches?storeId=
@@ -30,7 +32,7 @@ const fmtQty = (n) => (n == null ? "–" : Number(n).toLocaleString(undefined, {
 
 const party = (type, name, id) => `${type} ${name || `#${id}`}`;
 
-function TransferList({ title, emptyText, transfers, direction, session, onChanged }) {
+function TransferList({ title, emptyText, transfers, direction, session, onChanged, onPrint }) {
   const [openId, setOpenId] = useState(null);
 
   return (
@@ -114,6 +116,11 @@ function TransferList({ title, emptyText, transfers, direction, session, onChang
                         {t.receivedBy ? ` by ${t.receivedBy}` : ""}
                       </p>
                     ) : null}
+                    <div className="ds-action">
+                      <button type="button" className="ds-btn" onClick={() => onPrint(t.transferId)}>
+                        Print bill
+                      </button>
+                    </div>
                     {t.canReceive && <ReceiveForm transfer={t} session={session} onDone={onChanged} />}
                     {t.canCancel && <CancelForm transfer={t} session={session} onDone={onChanged} />}
                   </div>
@@ -136,6 +143,7 @@ export default function DispatchSection({ session }) {
 
   const [notice, setNotice] = useState("");
   const [creating, setCreating] = useState(false);
+  const [billId, setBillId] = useState(null); // transfer whose bill is open for printing
 
   // initial = first load (shows the loading card); later loads keep the list on screen while refreshing
   const load = useCallback(
@@ -164,9 +172,11 @@ export default function DispatchSection({ session }) {
     load();
   };
 
-  const created = (message) => {
+  // a new dispatch opens its bill straight away
+  const created = (message, transferId) => {
     setCreating(false);
     changed(message);
+    if (transferId) setBillId(transferId);
   };
 
   if (loading) {
@@ -224,6 +234,7 @@ export default function DispatchSection({ session }) {
         direction="out"
         session={session}
         onChanged={changed}
+        onPrint={setBillId}
       />
       <TransferList
         title="Dispatched to the godown"
@@ -232,7 +243,10 @@ export default function DispatchSection({ session }) {
         direction="in"
         session={session}
         onChanged={changed}
+        onPrint={setBillId}
       />
+
+      {billId && <PrintBill session={session} transferId={billId} onClose={() => setBillId(null)} />}
     </section>
   );
 }

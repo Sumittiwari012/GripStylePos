@@ -6,7 +6,8 @@ import { getJson, postJson } from "./storeApi";
 // Uses two endpoints of StoreController:
 //   GET  api/Store/GetDispatchOptions?storeId=   where goods can go + what can be sent from this store's godown
 //   POST api/Store/CreateDispatch                creates the dispatch (status Dispatched)
-// The goods always leave the godown linked to the store. The server re-checks every quantity.
+// The goods always leave the godown linked to the store, and their quantities are taken out of its stock.
+// The server re-checks every quantity.
 
 const fmt = (n) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 3 });
 
@@ -78,8 +79,8 @@ export default function CreateDispatch({ session, onCreated, onClose }) {
       const text = qty[p.barcode];
       if (text === undefined || text === "") continue;
       const n = Number(text);
-      if (Number.isNaN(n) || n < 0 || n > p.availableQty) {
-        setError(`Quantity for ${p.barcode} must be between 0 and ${fmt(p.availableQty)}.`);
+      if (Number.isNaN(n) || n < 0 || n > p.availableQty || !Number.isInteger(n)) {
+        setError(`Quantity for ${p.barcode} must be a whole number between 0 and ${fmt(p.availableQty)}.`);
         return;
       }
     }
@@ -94,7 +95,7 @@ export default function CreateDispatch({ session, onCreated, onClose }) {
         remarks,
         items: picked.map((p) => ({ barcode: p.barcode, qty: Number(qty[p.barcode]) })),
       });
-      onCreated(res.message || "Dispatch created.");
+      onCreated(res.message || "Dispatch created.", res.transferId);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -105,7 +106,7 @@ export default function CreateDispatch({ session, onCreated, onClose }) {
   return (
     <form className="ds-create" onSubmit={submit} aria-labelledby="ds-create-title">
       <h3 id="ds-create-title" className="ds-action-title">New dispatch</h3>
-      <p className="ds-action-help">Goods are sent from your godown. Pick where they go and how much of each product.</p>
+      <p className="ds-action-help">Goods are sent from your godown and taken out of its stock. Pick where they go and how many of each product.</p>
 
       <fieldset className="ds-fieldset">
         <legend>Send to</legend>
@@ -154,10 +155,10 @@ export default function CreateDispatch({ session, onCreated, onClose }) {
                   id={`ds-new-${p.barcode}`}
                   className="ds-input"
                   type="number"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   min="0"
                   max={p.availableQty}
-                  step="any"
+                  step="1"
                   placeholder="0"
                   value={qty[p.barcode] ?? ""}
                   onChange={(e) => setQty((q) => ({ ...q, [p.barcode]: e.target.value }))}

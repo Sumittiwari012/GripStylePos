@@ -1,0 +1,254 @@
+/* Styles for PrintBill.jsx. The bill is always black on white, on screen and on paper. */
+
+.pb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: auto;
+  padding: 16px;
+  background: rgba(20, 33, 61, 0.6);
+  color: #000;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  box-sizing: border-box;
+}
+
+.pb-overlay:focus {
+  outline: none;
+}
+
+.pb-overlay *,
+.pb-overlay *::before,
+.pb-overlay *::after {
+  box-sizing: border-box;
+}
+
+.pb-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 800px;
+  margin: 0 auto 12px;
+}
+
+.pb-btn {
+  height: 40px;
+  padding: 0 18px;
+  border: 1px solid #aeb7c6;
+  border-radius: 8px;
+  background: #fff;
+  color: #14213d;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pb-btn:focus-visible {
+  outline: 3px solid rgba(11, 110, 110, 0.5);
+  outline-offset: 2px;
+}
+
+.pb-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pb-btn-primary {
+  border-color: #0b6e6e;
+  background: #0b6e6e;
+  color: #fff;
+}
+
+.pb-message {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  border-radius: 8px;
+  background: #fff;
+  color: #14213d;
+}
+
+.pb-sheet {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 28px;
+  background: #fff;
+  color: #000;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.pb-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #000;
+}
+
+.pb-title {
+  margin: 0;
+  font-size: 1.6em;
+  letter-spacing: 0.02em;
+}
+
+.pb-sub {
+  color: #444;
+}
+
+.pb-meta {
+  margin: 0;
+  text-align: right;
+}
+
+.pb-meta > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pb-meta dt {
+  color: #444;
+}
+
+.pb-meta dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.pb-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.pb-party {
+  padding: 10px 12px;
+  border: 1px solid #000;
+}
+
+.pb-label {
+  margin-bottom: 2px;
+  color: #444;
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pb-party-name {
+  font-weight: 700;
+  font-size: 1.05em;
+}
+
+.pb-party-type {
+  color: #444;
+}
+
+.pb-party-address {
+  margin-top: 2px;
+}
+
+.pb-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pb-table th,
+.pb-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border: 1px solid #000;
+}
+
+.pb-table thead th {
+  background: #eee;
+}
+
+.pb-table tfoot td {
+  font-weight: 700;
+}
+
+.pb-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-sno {
+  width: 2.5em;
+  text-align: center !important;
+}
+
+.pb-remarks {
+  margin-top: 14px;
+}
+
+.pb-remarks p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.pb-signs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  margin-top: 56px;
+}
+
+.pb-sign-line {
+  height: 1px;
+  margin-bottom: 4px;
+  background: #000;
+}
+
+@media (max-width: 560px) {
+  .pb-sheet {
+    padding: 16px;
+    font-size: 13px;
+  }
+  .pb-head {
+    flex-direction: column;
+  }
+  .pb-meta,
+  .pb-meta > div {
+    text-align: left;
+    justify-content: flex-start;
+  }
+  .pb-parties,
+  .pb-signs {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── printing: only the bill ── */
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  body > *:not(.pb-portal) {
+    display: none !important;
+  }
+
+  .pb-overlay {
+    position: static;
+    overflow: visible;
+    padding: 0;
+    background: none;
+  }
+
+  .pb-toolbar {
+    display: none !important;
+  }
+
+  .pb-sheet {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .pb-table tr {
+    break-inside: avoid;
+  }
+}

@@ -19,8 +19,8 @@ export function ReceiveForm({ transfer, session, onDone }) {
     const items = [];
     for (const i of transfer.items) {
       const n = Number(qty[i.itemId]);
-      if (qty[i.itemId] === "" || Number.isNaN(n) || n < 0 || n > i.dispatchedQty) {
-        setError(`Received quantity for ${i.barcode || `product ${i.productId}`} must be between 0 and ${i.dispatchedQty}.`);
+      if (qty[i.itemId] === "" || Number.isNaN(n) || n < 0 || n > i.dispatchedQty || !Number.isInteger(n)) {
+        setError(`Received quantity for ${i.barcode || `product ${i.productId}`} must be a whole number between 0 and ${i.dispatchedQty}.`);
         return;
       }
       items.push({ itemId: i.itemId, receivedQty: n });
@@ -45,7 +45,7 @@ export function ReceiveForm({ transfer, session, onDone }) {
   return (
     <div className="ds-action">
       <h4 className="ds-action-title">Confirm receipt</h4>
-      <p className="ds-action-help">Enter the quantity that actually arrived for each product.</p>
+      <p className="ds-action-help">Enter the quantity that actually arrived for each product. It is added to your godown's stock.</p>
 
       <ul className="ds-qty-list">
         {transfer.items.map((i) => (
@@ -58,10 +58,10 @@ export function ReceiveForm({ transfer, session, onDone }) {
               id={`ds-qty-${i.itemId}`}
               className="ds-input"
               type="number"
-              inputMode="decimal"
+              inputMode="numeric"
               min="0"
               max={i.dispatchedQty}
-              step="any"
+              step="1"
               value={qty[i.itemId]}
               onChange={(e) => setQty((q) => ({ ...q, [i.itemId]: e.target.value }))}
             />
