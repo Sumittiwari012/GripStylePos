@@ -1,10 +1,23 @@
+import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { storeSession } from "./StoreLogin";
 import "./storePanel.css";
 
 // Page shown after a successful store login (route: /store).
 // Wrap it in <RequireStoreUser> in App.jsx so only logged-in users can open it.
-// Add your store tools inside the <main> area; the header and logout already work.
+//
+// Sections:
+//   1. Check godown      stock in the godown linked to this store
+//   2. Dispatch / Receive  goods leaving the godown for the store, and the store confirming them
+//   3. Assign rack       put products on racks in the store
+// Each section is a small component below. Replace its placeholder with the real screen
+// once its API is ready.
+
+const SECTIONS = [
+  { key: "godown", label: "Check godown" },
+  { key: "movement", label: "Dispatch & receive" },
+  { key: "rack", label: "Assign rack" },
+];
 
 const fmtDateTime = (d) =>
   d
@@ -17,9 +30,74 @@ const fmtDateTime = (d) =>
       })
     : "–";
 
+function Placeholder({ title, children }) {
+  return (
+    <section className="sp-card sp-empty">
+      <h2 className="sp-card-title">{title}</h2>
+      <p>{children}</p>
+      <p className="sp-note">This screen is not connected to the server yet.</p>
+    </section>
+  );
+}
+
+function GodownSection({ session }) {
+  return (
+    <Placeholder title="Check godown">
+      Look up the stock held in the godown linked to {session.storeName || "this store"}
+      {session.godownId ? ` (godown ${session.godownId})` : ""}, so you can see what is available before asking for a dispatch.
+    </Placeholder>
+  );
+}
+
+function MovementSection() {
+  const [view, setView] = useState("dispatch"); // dispatch | receive
+  return (
+    <>
+      <div className="sp-subtabs" role="tablist" aria-label="Dispatch or receive">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "dispatch"}
+          className={view === "dispatch" ? "on" : ""}
+          onClick={() => setView("dispatch")}
+        >
+          Dispatch
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "receive"}
+          className={view === "receive" ? "on" : ""}
+          onClick={() => setView("receive")}
+        >
+          Receive
+        </button>
+      </div>
+      {view === "dispatch" ? (
+        <Placeholder title="Dispatch">
+          Check the goods the godown has sent, or is about to send, to this store.
+        </Placeholder>
+      ) : (
+        <Placeholder title="Receive">
+          Confirm the goods that arrived at this store against what was dispatched, and note anything short or damaged.
+        </Placeholder>
+      )}
+    </>
+  );
+}
+
+function RackSection() {
+  return (
+    <Placeholder title="Assign rack">
+      Choose a product and the rack it should be kept on in this store.
+    </Placeholder>
+  );
+}
+
 export default function StorePanel() {
   const nav = useNavigate();
   const s = storeSession.get();
+  const [tab, setTab] = useState("godown");
 
   const logout = () => {
     storeSession.clear();
@@ -45,38 +123,30 @@ export default function StorePanel() {
       </header>
 
       <main className="sp-main">
-        <h1 className="sp-title">Welcome, {s.userName}</h1>
+        <nav className="sp-tabs" role="tablist" aria-label="Store sections">
+          {SECTIONS.map((x) => (
+            <button
+              key={x.key}
+              type="button"
+              role="tab"
+              id={`sp-tab-${x.key}`}
+              aria-selected={tab === x.key}
+              aria-controls={`sp-panel-${x.key}`}
+              className={tab === x.key ? "on" : ""}
+              onClick={() => setTab(x.key)}
+            >
+              {x.label}
+            </button>
+          ))}
+        </nav>
 
-        <section className="sp-card" aria-labelledby="sp-account">
-          <h2 id="sp-account" className="sp-card-title">Your login</h2>
-          <dl className="sp-details">
-            <div>
-              <dt>Store</dt>
-              <dd>{s.storeName || s.storeId}</dd>
-            </div>
-            <div>
-              <dt>Name</dt>
-              <dd>{s.userName}</dd>
-            </div>
-            <div>
-              <dt>Mobile number</dt>
-              <dd>{s.mobileNumber}</dd>
-            </div>
-            <div>
-              <dt>User type</dt>
-              <dd>{s.userTypeName || s.userTypeId}</dd>
-            </div>
-            <div>
-              <dt>Logged in</dt>
-              <dd>{fmtDateTime(s.loggedInAt)}</dd>
-            </div>
-          </dl>
-        </section>
+        <div role="tabpanel" id={`sp-panel-${tab}`} aria-labelledby={`sp-tab-${tab}`}>
+          {tab === "godown" && <GodownSection session={s} />}
+          {tab === "movement" && <MovementSection />}
+          {tab === "rack" && <RackSection />}
+        </div>
 
-        <section className="sp-card sp-empty">
-          <h2 className="sp-card-title">Store tools</h2>
-          <p>Nothing has been added to this panel yet. Tell me what the store team should do here and I will build it.</p>
-        </section>
+        <p className="sp-foot">Logged in {fmtDateTime(s.loggedInAt)}</p>
       </main>
     </div>
   );

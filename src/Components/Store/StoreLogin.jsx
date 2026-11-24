@@ -177,6 +177,7 @@ export default function StoreLogin() {
         userTypeName: r.userTypeName,
         storeId: r.storeId,
         storeName: r.storeName,
+        godownId: r.godownId,
         mobileNumber: r.mobileNumber,
         loggedInAt: new Date().toISOString(),
       });

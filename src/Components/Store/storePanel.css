@@ -123,3 +123,74 @@
   color: var(--sp-muted);
   line-height: 1.5;
 }
+
+/* ── section tabs ── */
+.sp-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--sp-line);
+  overflow-x: auto;
+}
+
+.sp-tabs button {
+  flex: none;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--sp-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sp-tabs button:hover {
+  color: var(--sp-ink);
+}
+
+.sp-tabs button.on {
+  color: var(--sp-accent);
+  border-bottom-color: var(--sp-accent);
+}
+
+.sp-tabs button:focus-visible,
+.sp-subtabs button:focus-visible {
+  outline: 3px solid rgba(11, 110, 110, 0.35);
+  outline-offset: -3px;
+}
+
+.sp-subtabs {
+  display: inline-flex;
+  margin-bottom: 14px;
+  border: 1px solid var(--sp-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--sp-surface);
+}
+
+.sp-subtabs button {
+  padding: 8px 18px;
+  border: 0;
+  background: none;
+  color: var(--sp-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sp-subtabs button.on {
+  background: var(--sp-accent);
+  color: #fff;
+}
+
+.sp-note {
+  margin-top: 10px !important;
+  font-size: 0.88rem;
+}
+
+.sp-foot {
+  margin: 8px 0 0;
+  color: var(--sp-muted);
+  font-size: 0.85rem;
+}
