@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJson } from "./storeApi";
 import { ReceiveForm, CancelForm } from "./TransferActions";
+import CreateDispatch from "./CreateDispatch";
 import "./dispatchSection.css";
 
-// "Dispatch" view of the store panel (used inside the Dispatch & receive tab, no route of its own).
+// "Dispatch" section of the store panel (no route of its own).
+// "Create dispatch" opens the form in CreateDispatch.jsx above the lists.
 //
 // Uses one endpoint of StoreController:
 //   GET api/Store/GetGodownDispatches?storeId=
@@ -133,6 +135,7 @@ export default function DispatchSection({ session }) {
   const [error, setError] = useState("");
 
   const [notice, setNotice] = useState("");
+  const [creating, setCreating] = useState(false);
 
   // initial = first load (shows the loading card); later loads keep the list on screen while refreshing
   const load = useCallback(
@@ -159,6 +162,11 @@ export default function DispatchSection({ session }) {
   const changed = (message) => {
     setNotice(message);
     load();
+  };
+
+  const created = (message) => {
+    setCreating(false);
+    changed(message);
   };
 
   if (loading) {
@@ -193,10 +201,21 @@ export default function DispatchSection({ session }) {
     <section className="sp-card" aria-labelledby="ds-title">
       <div className="ds-head">
         <h2 id="ds-title" className="sp-card-title">Dispatch</h2>
-        <button type="button" className="ds-btn" onClick={() => { setNotice(""); load(); }}>Refresh</button>
+        <div className="ds-head-buttons">
+          {!creating && (
+            <button type="button" className="ds-btn ds-btn-primary ds-btn-inline" onClick={() => { setNotice(""); setCreating(true); }}>
+              Create dispatch
+            </button>
+          )}
+          <button type="button" className="ds-btn" onClick={() => { setNotice(""); load(); }}>Refresh</button>
+        </div>
       </div>
 
       {notice ? <p className="ds-notice" role="status">{notice}</p> : null}
+
+      {creating && (
+        <CreateDispatch session={session} onCreated={created} onClose={() => setCreating(false)} />
+      )}
 
       <TransferList
         title="Coming out of the godown"

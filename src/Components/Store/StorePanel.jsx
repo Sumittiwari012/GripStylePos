@@ -10,14 +10,14 @@ import "./storePanel.css";
 //
 // The welcome title and "Your login" card are unchanged. Below them are the sections:
 //   1. Check godown        stock in the godown linked to this store (see GodownSection.jsx)
-//   2. Dispatch & receive  goods leaving / entering the godown (see DispatchSection.jsx), and the store confirming them
+//   2. Dispatch            goods leaving / entering the godown, and creating a new dispatch (see DispatchSection.jsx)
 //   3. Assign rack         put products on racks in the store
 // Each section is a small component below. Replace its placeholder with the real screen
 // once its API is ready.
 
 const SECTIONS = [
   { key: "godown", label: "Check godown" },
-  { key: "movement", label: "Dispatch & receive" },
+  { key: "dispatch", label: "Dispatch" },
   { key: "rack", label: "Assign rack" },
 ];
 
@@ -39,41 +39,6 @@ function Placeholder({ title, children }) {
       <p>{children}</p>
       <p className="sp-note">This screen is not connected to the server yet.</p>
     </section>
-  );
-}
-
-function MovementSection({ session }) {
-  const [view, setView] = useState("dispatch"); // dispatch | receive
-  return (
-    <>
-      <div className="sp-subtabs" role="tablist" aria-label="Dispatch or receive">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "dispatch"}
-          className={view === "dispatch" ? "on" : ""}
-          onClick={() => setView("dispatch")}
-        >
-          Dispatch
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "receive"}
-          className={view === "receive" ? "on" : ""}
-          onClick={() => setView("receive")}
-        >
-          Receive
-        </button>
-      </div>
-      {view === "dispatch" ? (
-        <DispatchSection session={session} />
-      ) : (
-        <Placeholder title="Receive">
-          Confirm the goods that arrived at this store against what was dispatched, and note anything short or damaged.
-        </Placeholder>
-      )}
-    </>
   );
 }
 
@@ -163,7 +128,7 @@ export default function StorePanel() {
 
         <div role="tabpanel" id={`sp-panel-${tab}`} aria-labelledby={`sp-tab-${tab}`}>
           {tab === "godown" && <GodownSection session={s} />}
-          {tab === "movement" && <MovementSection session={s} />}
+          {tab === "dispatch" && <DispatchSection session={s} />}
           {tab === "rack" && <RackSection />}
         </div>
       </main>
