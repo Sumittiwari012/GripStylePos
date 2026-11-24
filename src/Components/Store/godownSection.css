@@ -1,0 +1,121 @@
+/* Styles for GodownSection.jsx. Uses currentColor / inherit so it follows storePanel.css. */
+
+.gs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gs-btn {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.gs-btn:focus-visible,
+.gs-row:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.gs-error {
+  color: #b42318;
+}
+
+.gs-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.gs-row-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.gs-name {
+  font-weight: 600;
+}
+
+.gs-address {
+  font-size: 0.875em;
+  opacity: 0.75;
+}
+
+.gs-row-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.875em;
+  white-space: nowrap;
+}
+
+.gs-chevron {
+  width: 1em;
+  text-align: center;
+}
+
+.gs-stock {
+  margin-top: 12px;
+}
+
+.gs-table-wrap {
+  overflow-x: auto;
+}
+
+.gs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gs-table th,
+.gs-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.gs-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.gs-barcodes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875em;
+}
+
+.gs-qty {
+  opacity: 0.7;
+}
+
+@media (max-width: 520px) {
+  .gs-row {
+    flex-wrap: wrap;
+  }
+  .gs-row-stats {
+    flex-direction: row;
+    gap: 12px;
+    align-items: flex-start;
+  }
+}

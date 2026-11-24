@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { storeSession } from "./StoreLogin";
+import GodownSection from "./GodownSection";
 import "./storePanel.css";
 
 // Page shown after a successful store login (route: /store).
 // Wrap it in <RequireStoreUser> in App.jsx so only logged-in users can open it.
 //
 // The welcome title and "Your login" card are unchanged. Below them are the sections:
-//   1. Check godown        stock in the godown linked to this store
+//   1. Check godown        stock in the godown linked to this store (see GodownSection.jsx)
 //   2. Dispatch & receive  goods leaving the godown for the store, and the store confirming them
 //   3. Assign rack         put products on racks in the store
 // Each section is a small component below. Replace its placeholder with the real screen
@@ -37,15 +38,6 @@ function Placeholder({ title, children }) {
       <p>{children}</p>
       <p className="sp-note">This screen is not connected to the server yet.</p>
     </section>
-  );
-}
-
-function GodownSection({ session }) {
-  return (
-    <Placeholder title="Check godown">
-      Look up the stock held in the godown linked to {session.storeName || "this store"}
-      {session.godownId ? ` (godown ${session.godownId})` : ""}, so you can see what is available before asking for a dispatch.
-    </Placeholder>
   );
 }
 
