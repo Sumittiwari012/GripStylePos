@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { storeSession } from "./StoreLogin";
 import GodownSection from "./GodownSection";
 import DispatchSection from "./DispatchSection";
+import RackSection from "./RackSection";
 import "./storePanel.css";
 
 // Page shown after a successful store login (route: /store).
@@ -11,9 +12,7 @@ import "./storePanel.css";
 // The welcome title and "Your login" card are unchanged. Below them are the sections:
 //   1. Check godown        stock in the godown linked to this store (see GodownSection.jsx)
 //   2. Dispatch            goods leaving / entering the godown, and creating a new dispatch (see DispatchSection.jsx)
-//   3. Assign rack         put products on racks in the store
-// Each section is a small component below. Replace its placeholder with the real screen
-// once its API is ready.
+//   3. Assign rack         put received goods on racks in the store (see RackSection.jsx)
 
 const SECTIONS = [
   { key: "godown", label: "Check godown" },
@@ -31,24 +30,6 @@ const fmtDateTime = (d) =>
         minute: "2-digit",
       })
     : "–";
-
-function Placeholder({ title, children }) {
-  return (
-    <section className="sp-card sp-empty">
-      <h2 className="sp-card-title">{title}</h2>
-      <p>{children}</p>
-      <p className="sp-note">This screen is not connected to the server yet.</p>
-    </section>
-  );
-}
-
-function RackSection() {
-  return (
-    <Placeholder title="Assign rack">
-      Choose a product and the rack it should be kept on in this store.
-    </Placeholder>
-  );
-}
 
 export default function StorePanel() {
   const nav = useNavigate();
@@ -129,7 +110,7 @@ export default function StorePanel() {
         <div role="tabpanel" id={`sp-panel-${tab}`} aria-labelledby={`sp-tab-${tab}`}>
           {tab === "godown" && <GodownSection session={s} />}
           {tab === "dispatch" && <DispatchSection session={s} />}
-          {tab === "rack" && <RackSection />}
+          {tab === "rack" && <RackSection session={s} />}
         </div>
       </main>
     </div>
