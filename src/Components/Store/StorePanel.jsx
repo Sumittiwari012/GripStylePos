@@ -34,7 +34,10 @@ export default function StorePanel() {
       <header className="sp-header">
         <div className="sp-header-main">
           <span className="sp-store">{s.storeName || `Store ${s.storeId}`}</span>
-          <span className="sp-user">{s.userName}</span>
+          <span className="sp-user">
+            {s.userName}
+            {s.userTypeName ? ` (${s.userTypeName})` : ""}
+          </span>
         </div>
         <button type="button" className="sp-logout" onClick={logout}>
           Log out
@@ -61,7 +64,7 @@ export default function StorePanel() {
             </div>
             <div>
               <dt>User type</dt>
-              <dd>{s.userTypeId}</dd>
+              <dd>{s.userTypeName || s.userTypeId}</dd>
             </div>
             <div>
               <dt>Logged in</dt>

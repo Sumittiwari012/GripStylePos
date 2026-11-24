@@ -174,6 +174,7 @@ export default function StoreLogin() {
         userId: r.userId,
         userName: r.userName,
         userTypeId: r.userTypeId,
+        userTypeName: r.userTypeName,
         storeId: r.storeId,
         storeName: r.storeName,
         mobileNumber: r.mobileNumber,
