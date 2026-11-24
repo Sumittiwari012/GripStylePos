@@ -6,10 +6,10 @@ import "./storePanel.css";
 // Page shown after a successful store login (route: /store).
 // Wrap it in <RequireStoreUser> in App.jsx so only logged-in users can open it.
 //
-// Sections:
-//   1. Check godown      stock in the godown linked to this store
-//   2. Dispatch / Receive  goods leaving the godown for the store, and the store confirming them
-//   3. Assign rack       put products on racks in the store
+// The welcome title and "Your login" card are unchanged. Below them are the sections:
+//   1. Check godown        stock in the godown linked to this store
+//   2. Dispatch & receive  goods leaving the godown for the store, and the store confirming them
+//   3. Assign rack         put products on racks in the store
 // Each section is a small component below. Replace its placeholder with the real screen
 // once its API is ready.
 
@@ -123,6 +123,36 @@ export default function StorePanel() {
       </header>
 
       <main className="sp-main">
+        {/* ---- Original part of the panel (unchanged) ---- */}
+        <h1 className="sp-title">Welcome, {s.userName}</h1>
+
+        <section className="sp-card" aria-labelledby="sp-account">
+          <h2 id="sp-account" className="sp-card-title">Your login</h2>
+          <dl className="sp-details">
+            <div>
+              <dt>Store</dt>
+              <dd>{s.storeName || s.storeId}</dd>
+            </div>
+            <div>
+              <dt>Name</dt>
+              <dd>{s.userName}</dd>
+            </div>
+            <div>
+              <dt>Mobile number</dt>
+              <dd>{s.mobileNumber}</dd>
+            </div>
+            <div>
+              <dt>User type</dt>
+              <dd>{s.userTypeName || s.userTypeId}</dd>
+            </div>
+            <div>
+              <dt>Logged in</dt>
+              <dd>{fmtDateTime(s.loggedInAt)}</dd>
+            </div>
+          </dl>
+        </section>
+
+        {/* ---- New: store sections, below the original part ---- */}
         <nav className="sp-tabs" role="tablist" aria-label="Store sections">
           {SECTIONS.map((x) => (
             <button
@@ -145,8 +175,6 @@ export default function StorePanel() {
           {tab === "movement" && <MovementSection />}
           {tab === "rack" && <RackSection />}
         </div>
-
-        <p className="sp-foot">Logged in {fmtDateTime(s.loggedInAt)}</p>
       </main>
     </div>
   );
