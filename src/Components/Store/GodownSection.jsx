@@ -7,8 +7,10 @@ import "./godownSection.css";
 //   GET api/Store/GetStoreGodown?storeId=   godown linked to the store + stock summary (the row)
 //   GET api/Store/GetGodownStock?storeId=   products in that godown (loaded when the row is expanded)
 //
-// Set API_BASE to the same backend address your login page uses.
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
+// Backend address. Set VITE_API_URL to override it (e.g. for local testing);
+// otherwise it uses the deployed API. It must be the full address, not a relative path,
+// or the request goes to the Netlify site instead of the API.
+const API_BASE = (import.meta.env.VITE_API_URL || "https://gripstyleapi.runasp.net").replace(/\/$/, "");
 
 async function getJson(path, signal) {
   const res = await fetch(`${API_BASE}${path}`, { signal });
