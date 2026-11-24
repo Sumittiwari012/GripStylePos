@@ -14,6 +14,8 @@ import AdminPage from './Components/mfwp/AdminPage';
 import { auditRoutes } from "./Components/Audit/routes";
 import { rackRoutes } from "./Components/Rack/rackRoutes";
 import ProductStockReport from './Components/ProductStockReport';
+import StoreLogin, { RequireStoreUser } from './Components/Store/StoreLogin';
+import StorePanel from './Components/Store/StorePanel';
 
 function App() {
   return (
@@ -30,8 +32,12 @@ function App() {
       <Route path="/adminwp" element={<AdminPage />} />
       <Route path="/pdtstockreport" element={<ProductStockReport />}  />
 
-      {auditRoutes}   {/* ← new: all 7 audit routes */}
-      {rackRoutes}    {/* ← new: all 5 rack routes */}
+      {/* Store: login first, then the panel (only for logged-in store users) */}
+      <Route path="/store-login" element={<StoreLogin />} />
+      <Route path="/store" element={<RequireStoreUser><StorePanel /></RequireStoreUser>} />
+
+      {auditRoutes}   {/* all audit routes */}
+      {rackRoutes}    {/* all rack routes */}
     </Routes>
   )
 }

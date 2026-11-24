@@ -1,0 +1,272 @@
+/* Store login. Every class is prefixed "sl-" so it cannot clash with the rest of the app. */
+
+.sl-page {
+  --sl-ink: #14213d;
+  --sl-muted: #5b6577;
+  --sl-line: #d9dee7;
+  --sl-surface: #ffffff;
+  --sl-bg: #eef1f6;
+  --sl-accent: #0b6e6e;
+  --sl-accent-dark: #085858;
+  --sl-ok-bg: #e3f3ef;
+  --sl-error: #b42318;
+
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--sl-bg);
+  color: var(--sl-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  box-sizing: border-box;
+}
+
+.sl-page *,
+.sl-page *::before,
+.sl-page *::after {
+  box-sizing: border-box;
+}
+
+.sl-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--sl-surface);
+  border: 1px solid var(--sl-line);
+  border-radius: 12px;
+  padding: 28px 24px 24px;
+  box-shadow: 0 1px 2px rgba(20, 33, 61, 0.06);
+}
+
+.sl-title {
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.sl-sub {
+  margin: 0 0 22px;
+  max-width: 60ch;
+  color: var(--sl-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* ── the three steps ── */
+.sl-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sl-step {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding-bottom: 18px;
+}
+
+/* connecting line between the step marks */
+.sl-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 30px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--sl-line);
+}
+
+.sl-step.is-done:not(:last-child)::before {
+  background: var(--sl-accent);
+}
+
+.sl-step:last-child {
+  padding-bottom: 0;
+}
+
+.sl-mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: 2px solid var(--sl-line);
+  background: var(--sl-surface);
+  color: var(--sl-muted);
+}
+
+.sl-step.is-active .sl-mark {
+  border-color: var(--sl-accent);
+  color: var(--sl-accent);
+}
+
+.sl-step.is-done .sl-mark {
+  border-color: var(--sl-accent);
+  background: var(--sl-accent);
+  color: #fff;
+}
+
+.sl-step-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.sl-waiting {
+  color: var(--sl-muted);
+  font-size: 0.95rem;
+}
+
+/* a confirmed step collapses to one line */
+.sl-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--sl-ok-bg);
+  font-size: 0.92rem;
+}
+
+/* ── form pieces ── */
+.sl-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sl-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.sl-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid #aeb7c6;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--sl-ink);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.sl-input:focus-visible,
+.sl-phone:focus-within {
+  outline: 3px solid rgba(11, 110, 110, 0.35);
+  outline-offset: 1px;
+  border-color: var(--sl-accent);
+}
+
+.sl-phone {
+  display: flex;
+  align-items: center;
+  height: 46px;
+  border: 1px solid #aeb7c6;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.sl-prefix {
+  padding: 0 12px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: #f3f5f9;
+  border-right: 1px solid #aeb7c6;
+  color: var(--sl-muted);
+  font-size: 0.95rem;
+}
+
+.sl-input-bare {
+  border: 0;
+  height: 100%;
+  border-radius: 0;
+}
+
+.sl-input-bare:focus-visible {
+  outline: none;
+}
+
+.sl-otp {
+  text-align: center;
+  font-size: 1.6rem;
+  letter-spacing: 0.6em;
+  padding-left: 0.6em; /* balances the trailing letter-spacing so digits look centred */
+  font-variant-numeric: tabular-nums;
+}
+
+.sl-btn {
+  height: 46px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--sl-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sl-btn:hover:not(:disabled) {
+  background: var(--sl-accent-dark);
+}
+
+.sl-btn:focus-visible,
+.sl-link:focus-visible {
+  outline: 3px solid rgba(11, 110, 110, 0.35);
+  outline-offset: 2px;
+}
+
+.sl-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sl-link {
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  color: var(--sl-accent);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sl-link:disabled {
+  color: var(--sl-muted);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.sl-resend {
+  align-self: flex-start;
+}
+
+.sl-error {
+  min-height: 1.4em;
+  margin: 16px 0 0;
+  color: var(--sl-error);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 380px) {
+  .sl-card {
+    padding: 22px 16px 18px;
+  }
+  .sl-otp {
+    letter-spacing: 0.4em;
+    padding-left: 0.4em;
+  }
+}
