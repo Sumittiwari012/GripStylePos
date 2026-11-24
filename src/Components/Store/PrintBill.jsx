@@ -123,7 +123,7 @@ export default function PrintBill({ session, transferId, onClose }) {
                 {bill.items.map((i, n) => (
                   <tr key={i.itemId}>
                     <td className="pb-sno">{n + 1}</td>
-                    <td>Product {i.productId}</td>
+                    <td>{i.productName || `Product ${i.productId}`}</td>
                     <td>{i.barcode || "–"}</td>
                     <td className="pb-num">{fmtQty(i.dispatchedQty)}</td>
                     {showReceived && <td className="pb-num">{fmtQty(i.receivedQty)}</td>}

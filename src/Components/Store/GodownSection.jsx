@@ -152,7 +152,7 @@ export default function GodownSection({ session }) {
                 <tbody>
                   {products.map((p, i) => (
                     <tr key={p.productId ?? `none-${i}`}>
-                      <td>{p.productId != null ? `Product ${p.productId}` : "No product assigned"}</td>
+                      <td>{p.productId != null ? p.productName || `Product ${p.productId}` : "No product assigned"}</td>
                       <td className="gs-num">{p.totalQuantity}</td>
                       <td>
                         <ul className="gs-barcodes">

@@ -98,7 +98,7 @@ function TransferList({ title, emptyText, transfers, direction, session, onChang
                             {t.items.map((i) => (
                               <tr key={i.itemId}>
                                 <td>
-                                  Product {i.productId}
+                                  {i.productName || `Product ${i.productId}`}
                                   {i.remarks ? <div className="ds-item-note">{i.remarks}</div> : null}
                                 </td>
                                 <td>{i.barcode || "–"}</td>

@@ -148,7 +148,7 @@ export default function CreateDispatch({ session, onCreated, onClose }) {
             {options.products.map((p) => (
               <li key={p.barcode} className="ds-stock-item">
                 <label htmlFor={`ds-new-${p.barcode}`}>
-                  Product {p.productId ?? "–"} ({p.barcode})
+                  {p.productName || `Product ${p.productId ?? "–"}`} ({p.barcode})
                   <span className="ds-qty-sent"> · {fmt(p.availableQty)} available</span>
                 </label>
                 <input

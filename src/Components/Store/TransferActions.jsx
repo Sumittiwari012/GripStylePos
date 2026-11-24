@@ -51,7 +51,7 @@ export function ReceiveForm({ transfer, session, onDone }) {
         {transfer.items.map((i) => (
           <li key={i.itemId}>
             <label htmlFor={`ds-qty-${i.itemId}`}>
-              Product {i.productId} {i.barcode ? `(${i.barcode})` : ""}
+              {i.productName || `Product ${i.productId}`} {i.barcode ? `(${i.barcode})` : ""}
               <span className="ds-qty-sent"> sent {i.dispatchedQty}</span>
             </label>
             <input
