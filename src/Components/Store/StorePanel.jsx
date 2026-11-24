@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { storeSession } from "./StoreLogin";
 import GodownSection from "./GodownSection";
+import DispatchSection from "./DispatchSection";
 import "./storePanel.css";
 
 // Page shown after a successful store login (route: /store).
@@ -9,7 +10,7 @@ import "./storePanel.css";
 //
 // The welcome title and "Your login" card are unchanged. Below them are the sections:
 //   1. Check godown        stock in the godown linked to this store (see GodownSection.jsx)
-//   2. Dispatch & receive  goods leaving the godown for the store, and the store confirming them
+//   2. Dispatch & receive  goods leaving / entering the godown (see DispatchSection.jsx), and the store confirming them
 //   3. Assign rack         put products on racks in the store
 // Each section is a small component below. Replace its placeholder with the real screen
 // once its API is ready.
@@ -41,7 +42,7 @@ function Placeholder({ title, children }) {
   );
 }
 
-function MovementSection() {
+function MovementSection({ session }) {
   const [view, setView] = useState("dispatch"); // dispatch | receive
   return (
     <>
@@ -66,9 +67,7 @@ function MovementSection() {
         </button>
       </div>
       {view === "dispatch" ? (
-        <Placeholder title="Dispatch">
-          Check the goods the godown has sent, or is about to send, to this store.
-        </Placeholder>
+        <DispatchSection session={session} />
       ) : (
         <Placeholder title="Receive">
           Confirm the goods that arrived at this store against what was dispatched, and note anything short or damaged.
@@ -164,7 +163,7 @@ export default function StorePanel() {
 
         <div role="tabpanel" id={`sp-panel-${tab}`} aria-labelledby={`sp-tab-${tab}`}>
           {tab === "godown" && <GodownSection session={s} />}
-          {tab === "movement" && <MovementSection />}
+          {tab === "movement" && <MovementSection session={s} />}
           {tab === "rack" && <RackSection />}
         </div>
       </main>

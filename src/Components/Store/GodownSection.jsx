@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { getJson } from "./storeApi";
 import "./godownSection.css";
 
 // "Check godown" section of the store panel (used by StorePanel.jsx, no route of its own).
@@ -7,18 +8,6 @@ import "./godownSection.css";
 //   GET api/Store/GetStoreGodown?storeId=   godown linked to the store + stock summary (the row)
 //   GET api/Store/GetGodownStock?storeId=   products in that godown (loaded when the row is expanded)
 //
-// Backend address. Set VITE_API_URL to override it (e.g. for local testing);
-// otherwise it uses the deployed API. It must be the full address, not a relative path,
-// or the request goes to the Netlify site instead of the API.
-const API_BASE = (import.meta.env.VITE_API_URL || "https://gripstyleapi.runasp.net").replace(/\/$/, "");
-
-async function getJson(path, signal) {
-  const res = await fetch(`${API_BASE}${path}`, { signal });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Something went wrong. Please try again.");
-  return data;
-}
-
 export default function GodownSection({ session }) {
   const storeId = session.storeId;
 
