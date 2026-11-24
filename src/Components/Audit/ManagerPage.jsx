@@ -19,6 +19,8 @@ export default function ManagerPage() {
 
   const status = progress.data?.status;
   const counting = status === "InProgress";
+  // After the report is submitted (Review) the manager can still recount products the incharge sent back
+  const inReview = status === "Review";
   const o = progress.data?.overall;
   const mine = progress.data?.mine;
 
@@ -31,7 +33,7 @@ export default function ManagerPage() {
       {status && !counting && (
         <div className="au-banner au-banner-warn">
           {status === "Review"
-            ? "The report has been submitted to the incharge, so counting is closed. Ask the incharge to send it back if something must change."
+            ? "The report has been submitted to the incharge, so normal counting is closed. Products the incharge sent back can still be recounted (look for the \"Sent back\" filter inside a category)."
             : `This audit is ${status}. Counting is not open.`}
         </div>
       )}
@@ -61,7 +63,7 @@ export default function ManagerPage() {
 
       {/* both tabs stay mounted so opened categories are not lost when you switch */}
       <div style={{ display: tab === "count" ? "block" : "none" }}>
-        <StatusTree role="manager" auditId={auditId} canAct={counting} refreshKey={tick} onChanged={() => progress.reload()} />
+        <StatusTree role="manager" auditId={auditId} canAct={counting} allowSentBack={inReview} refreshKey={tick} onChanged={() => progress.reload()} />
 
         {counting && (
           <Card title="Finished counting?">
