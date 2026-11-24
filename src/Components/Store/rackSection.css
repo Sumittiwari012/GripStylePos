@@ -1,0 +1,231 @@
+/* Styles for RackSection.jsx. Uses currentColor / inherit so it follows storePanel.css. */
+
+.rk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rk-btn {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.rk-btn:focus-visible,
+.rk-rack summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.rk-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.rk-btn-small {
+  padding: 3px 10px;
+  font-size: 0.85em;
+}
+
+.rk-btn-primary {
+  margin-top: 12px;
+  border-color: #1a7f37;
+  color: #1a7f37;
+  font-weight: 600;
+}
+
+.rk-error {
+  color: #b42318;
+}
+
+.rk-notice {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border: 1px solid #1a7f37;
+  border-radius: 6px;
+  color: #1a7f37;
+}
+
+.rk-group {
+  margin-top: 18px;
+}
+
+.rk-group-title {
+  margin: 0 0 8px;
+  font-size: 1em;
+}
+
+.rk-count {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 6px;
+  margin-left: 6px;
+  font-size: 0.8em;
+  font-weight: 400;
+  text-align: center;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  border-radius: 999px;
+}
+
+.rk-empty {
+  margin: 4px 0;
+  opacity: 0.75;
+}
+
+.rk-help {
+  margin: 0 0 10px;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
+.rk-muted {
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
+.rk-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rk-product {
+  padding: 10px 12px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 8px;
+}
+
+.rk-product-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.rk-product-name {
+  font-weight: 600;
+}
+
+.rk-left {
+  margin-left: auto;
+  font-size: 0.85em;
+}
+
+.rk-already {
+  margin: 4px 0 0;
+}
+
+.rk-assign-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rk-input {
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(128, 128, 128, 0.6);
+  border-radius: 6px;
+}
+
+.rk-code {
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+.rk-hint {
+  flex-basis: 100%;
+  font-size: 0.8em;
+}
+
+.rk-qty {
+  width: 6.5em;
+  text-align: right;
+}
+
+.rk-product-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 0.85em;
+}
+
+/* ── racks list ── */
+.rk-rack {
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.rk-rack summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.rk-rack[open] summary {
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.rk-rack-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rk-rack-stats {
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.rk-table-wrap {
+  overflow-x: auto;
+  padding: 6px 0 10px;
+}
+
+.rk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rk-table th,
+.rk-table td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.rk-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 520px) {
+  .rk-assign-row {
+    flex-wrap: wrap;
+  }
+  .rk-code {
+    flex-basis: 100%;
+  }
+}
