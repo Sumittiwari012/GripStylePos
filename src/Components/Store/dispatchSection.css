@@ -1,0 +1,258 @@
+/* Styles for DispatchSection.jsx. Uses currentColor / inherit so it follows storePanel.css. */
+
+.ds-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ds-btn {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ds-btn:focus-visible,
+.ds-row:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.ds-error {
+  color: #b42318;
+}
+
+.ds-group {
+  margin-top: 16px;
+}
+
+.ds-group-title {
+  margin: 0 0 8px;
+  font-size: 1em;
+}
+
+.ds-count {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 6px;
+  margin-left: 6px;
+  font-size: 0.8em;
+  font-weight: 400;
+  text-align: center;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  border-radius: 999px;
+}
+
+.ds-empty {
+  margin: 4px 0;
+  opacity: 0.75;
+}
+
+.ds-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ds-row-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ds-no {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.ds-other {
+  font-size: 0.9em;
+}
+
+.ds-date {
+  font-size: 0.8em;
+  opacity: 0.75;
+}
+
+.ds-status {
+  padding: 1px 8px;
+  font-size: 0.75em;
+  font-weight: 500;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+.ds-row-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.ds-chevron {
+  width: 1em;
+  text-align: center;
+}
+
+.ds-items {
+  margin: 6px 0 0;
+  padding: 0 4px;
+}
+
+.ds-remarks {
+  margin: 0 0 8px;
+  font-size: 0.9em;
+}
+
+.ds-table-wrap {
+  overflow-x: auto;
+}
+
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ds-table th,
+.ds-table td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.ds-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-item-note {
+  font-size: 0.8em;
+  opacity: 0.75;
+}
+
+.ds-notice {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border: 1px solid #1a7f37;
+  border-radius: 6px;
+  color: #1a7f37;
+}
+
+.ds-action {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(128, 128, 128, 0.5);
+}
+
+.ds-action-title {
+  margin: 0 0 4px;
+  font-size: 0.95em;
+}
+
+.ds-action-help {
+  display: block;
+  margin: 4px 0;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.ds-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ds-qty-list {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-qty-list label {
+  display: block;
+  font-size: 0.9em;
+}
+
+.ds-qty-sent {
+  opacity: 0.7;
+}
+
+.ds-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(128, 128, 128, 0.6);
+  border-radius: 6px;
+}
+
+.ds-textarea {
+  resize: vertical;
+}
+
+.ds-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ds-btn-primary {
+  margin-top: 8px;
+  border-color: #1a7f37;
+  color: #1a7f37;
+  font-weight: 600;
+}
+
+.ds-btn-danger {
+  border-color: #b42318;
+  color: #b42318;
+}
+
+@media (max-width: 520px) {
+  .ds-row {
+    flex-wrap: wrap;
+  }
+  .ds-row-main {
+    flex-basis: calc(100% - 2em);
+  }
+  .ds-row-stats {
+    flex-direction: row;
+    gap: 12px;
+  }
+}
