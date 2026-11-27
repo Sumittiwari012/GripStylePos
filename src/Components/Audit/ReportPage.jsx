@@ -4,6 +4,7 @@ import { api, fmtDate, qty, ROUTE_BASE, session } from "./api";
 import { Deck, ViewToggle, useViewMode } from "./CardView";
 import { ApprovalTag, Bar, Badge, Card, ErrorBox, Field, FindBar, Loading, Modal, ProductMeta, Shell, Stat, useLoad, useToast } from "./ui";
 import { ReviewButtons, ReviewDialog, ReviewTag } from "./StatusTree";
+import { downloadToVerifyPdf } from "./toVerifyPdf";
 
 // Owner route:    /audit/owner/:auditId/report
 // Incharge route: /audit/incharge/report  (audit comes from the login session)
@@ -86,6 +87,7 @@ export default function ReportPage({ who }) {
   const [expand, setExpand] = useState({ open: false, n: 0 });
   const [layout, setLayout] = useViewMode(); // table | card
   const [doneTick, setDoneTick] = useState(0); // a verify / send back went through
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [focus, setFocus] = useState(null); // product found by barcode: { key, categoryName, subCategoryName, nonce }
 
   const { data: r, error, loading, reload } = useLoad(
@@ -181,6 +183,20 @@ export default function ReportPage({ who }) {
     setQ(""); setOnly("all");
     setFocus({ key: lineKey(l), categoryName: g.categoryName, subCategoryName: sg.subCategoryName, nonce: Date.now() });
     notify(`${l.productName}: ${g.categoryName} › ${sg.subCategoryName}`);
+  };
+
+  // PDF of every product still waiting for verification (ignores the search box), category > sub category
+  const downloadPdf = async () => {
+    const pdfGroups = groups
+      .map((g) => ({ ...g, subCategories: g.subCategories.map((sg) => ({ ...sg, items: sg.items.filter(isToVerify) })).filter((sg) => sg.items.length > 0) }))
+      .filter((g) => g.subCategories.length > 0);
+    if (pdfGroups.length === 0) { notify("Nothing waiting for verification.", "err"); return; }
+    setPdfBusy(true);
+    try {
+      await downloadToVerifyPdf({ auditName: r.auditName, auditCode: r.auditCode, groups: pdfGroups, figures, fmtQty: qty, fmtDate });
+    } catch (e) {
+      notify("Could not create the PDF. Make sure jspdf and jspdf-autotable are installed.", "err");
+    } finally { setPdfBusy(false); }
   };
 
   const term = q.trim().toLowerCase();
@@ -321,6 +337,7 @@ export default function ReportPage({ who }) {
                   <button key={k} className={only === k ? "on" : ""} onClick={() => setOnly(k)}>{l}</button>
                 ))}
               </div>
+              {only === "toVerify" && totals.toVerify > 0 && <button className="au-btn au-btn-sm" disabled={pdfBusy} onClick={downloadPdf}>{pdfBusy ? "Creating PDF…" : "Download PDF"}</button>}
               {layout !== "card" && <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: true, n: e.n + 1 }))}>Expand all</button>}
               {layout !== "card" && <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: false, n: e.n + 1 }))}>Collapse all</button>}
             </div>
