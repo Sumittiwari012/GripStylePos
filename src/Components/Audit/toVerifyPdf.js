@@ -3,7 +3,7 @@
 //
 // groups: [{ categoryName, subCategories: [{ subCategoryName, items: [line] }] }]
 //         items are already only the products waiting for verification.
-// figures(line) -> { stockAt, physical, balance, live }   (same numbers as the report)
+// figures(line) -> { physical, ... }   (only the physical count is printed)
 export async function downloadToVerifyPdf({ auditName, auditCode, groups, figures, fmtQty, fmtDate, fileName }) {
   const { jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default;
@@ -15,7 +15,6 @@ export async function downloadToVerifyPdf({ auditName, auditCode, groups, figure
   const total = groups.reduce((n, g) => n + g.subCategories.reduce((m, s) => m + s.items.length, 0), 0);
 
   const show = (v) => (v === null || v === undefined ? "-" : fmtQty(v));
-  const signed = (v) => (v === null || v === undefined ? "-" : `${v > 0 ? "+" : ""}${fmtQty(v)}`);
 
   // ── title ──
   doc.setFont("helvetica", "bold").setFontSize(16).setTextColor(22, 35, 59);
@@ -45,33 +44,11 @@ export async function downloadToVerifyPdf({ auditName, auditCode, groups, figure
       autoTable(doc, {
         startY: y,
         margin: { left: M, right: M, top: 40, bottom: 40 },
-        head: [["Barcode", "Product", "Stock at verification", "Physical count", "Balance", "Live stock", "Counted by", "Remarks"]],
-        body: sg.items.map((l) => {
-          const f = figures(l);
-          return [
-            l.barcode || "-",
-            l.productName || "-",
-            show(f.stockAt),
-            show(f.physical),
-            signed(f.balance),
-            show(f.live),
-            l.verifiedBy || "-",
-            [l.reasonCode, l.note].filter(Boolean).join(" - ") || "-",
-          ];
-        }),
-        styles: { fontSize: 8, cellPadding: 3, textColor: [22, 35, 59], lineColor: [216, 222, 230], lineWidth: 0.5 },
+        head: [["Barcode", "Product", "Physical count"]],
+        body: sg.items.map((l) => [l.barcode || "-", l.productName || "-", show(figures(l).physical)]),
+        styles: { fontSize: 9, cellPadding: 4, textColor: [22, 35, 59], lineColor: [216, 222, 230], lineWidth: 0.5 },
         headStyles: { fillColor: [238, 241, 244], textColor: [95, 107, 124], fontStyle: "bold" },
-        columnStyles: {
-          0: { cellWidth: 90 },
-          2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" },
-        },
-        didParseCell: (d) => {
-          if (d.section === "body" && d.column.index === 4) {
-            const t = String(d.cell.raw);
-            if (t.startsWith("-") && t !== "-") d.cell.styles.textColor = [179, 38, 30];
-            else if (t.startsWith("+")) d.cell.styles.textColor = [106, 76, 186];
-          }
-        },
+        columnStyles: { 0: { cellWidth: 140 }, 2: { halign: "right", cellWidth: 110 } },
       });
       y = doc.lastAutoTable.finalY + 16;
     }
