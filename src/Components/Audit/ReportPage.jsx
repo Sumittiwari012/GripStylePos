@@ -22,6 +22,8 @@ import { ReviewButtons, ReviewDialog, ReviewTag } from "./StatusTree";
 //     Total = Live stock + Balance      (Balance is negative for a shortage)
 
 const isCounted = (l) => !!l.status && l.status !== "Pending" && l.status !== "OnHold";
+// counted by a manager and not yet verified / sent back by the incharge or owner
+const isToVerify = (l) => isCounted(l) && (!l.reviewStatus || l.reviewStatus === "None");
 const num = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
 const sum = (arr, f) => arr.reduce((n, x) => n + (Number(f(x)) || 0), 0);
 
@@ -80,7 +82,7 @@ export default function ReportPage({ who }) {
       : { to: `${ROUTE_BASE}/incharge`, label: "Audit" };
 
   const [q, setQ] = useState("");
-  const [only, setOnly] = useState("all"); // all | counted | notCounted
+  const [only, setOnly] = useState("all"); // all | counted | notCounted | toVerify
   const [expand, setExpand] = useState({ open: false, n: 0 });
   const [layout, setLayout] = useViewMode(); // table | card
   const [doneTick, setDoneTick] = useState(0); // a verify / send back went through
@@ -114,6 +116,7 @@ export default function ReportPage({ who }) {
       products: all.length,
       counted: counted.length,
       notCounted: all.length - counted.length,
+      toVerify: all.filter(isToVerify).length,
       // manager section
       stockAt: ok("stockAt"),
       physical: ok("physical"),
@@ -183,7 +186,7 @@ export default function ReportPage({ who }) {
   const term = q.trim().toLowerCase();
   const view = useMemo(() => {
     const keep = (l) =>
-      (only === "all" || (only === "counted") === isCounted(l)) &&
+      (only === "all" || (only === "toVerify" ? isToVerify(l) : (only === "counted") === isCounted(l))) &&
       (!term || l.productName.toLowerCase().includes(term) || (l.barcode || "").toLowerCase().includes(term));
     return groups
       .map((g) => ({
@@ -314,7 +317,7 @@ export default function ReportPage({ who }) {
                 aria-label="Search product or barcode"
               />
               <div className="au-seg">
-                {[["all", "All"], ["counted", "Counted"], ["notCounted", "Not counted"]].map(([k, l]) => (
+                {[["all", "All"], ["counted", "Counted"], ["notCounted", "Not counted"], ["toVerify", `To verify (${totals.toVerify})`]].map(([k, l]) => (
                   <button key={k} className={only === k ? "on" : ""} onClick={() => setOnly(k)}>{l}</button>
                 ))}
               </div>
@@ -322,11 +325,11 @@ export default function ReportPage({ who }) {
               {layout !== "card" && <button className="au-btn au-btn-ghost au-btn-sm" onClick={() => setExpand((e) => ({ open: false, n: e.n + 1 }))}>Collapse all</button>}
             </div>
 
-            {shown === 0 && <p className="au-muted">{term || only !== "all" ? "No product matches." : "No products."}</p>}
+            {shown === 0 && <p className="au-muted">{only === "toVerify" && !term ? "Nothing waiting for verification." : term || only !== "all" ? "No product matches." : "No products."}</p>}
             {layout === "card"
               ? <ReportCards groups={view} perm={perm} review={review} editNote={editNote} doneTick={doneTick} focus={focus} />
               : view.map((g) => (
-                <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term} subOpen={expand.n === 0 || expand.open || !!term} perm={perm} review={review} editNote={editNote} focus={focus} />
+                <CategoryGroup key={`${g.categoryName}-${expand.n}`} g={g} open={expand.open || !!term || only === "toVerify"} subOpen={expand.n === 0 || expand.open || !!term} perm={perm} review={review} editNote={editNote} focus={focus} />
               ))}
           </Card>
 
