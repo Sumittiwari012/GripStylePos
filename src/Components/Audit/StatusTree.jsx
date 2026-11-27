@@ -378,7 +378,7 @@ export function ReviewDialog({ auditId, target, onClose, onDone }) {
 }
 
 // Manager: count / hold.  Incharge: correct.
-function CountDialog({ role, auditId, item, canAct, onClose, onDone }) {
+export function CountDialog({ role, auditId, item, canAct, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [holdNote, setHoldNote] = useState("");
@@ -445,7 +445,7 @@ function CountDialog({ role, auditId, item, canAct, onClose, onDone }) {
   );
 }
 
-function ResetDialog({ auditId, item, onClose, onDone }) {
+export function ResetDialog({ auditId, item, onClose, onDone }) {
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);

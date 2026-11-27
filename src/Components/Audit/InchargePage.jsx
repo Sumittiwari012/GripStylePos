@@ -4,12 +4,14 @@ import { api, ROUTE_BASE, session } from "./api";
 import { ApprovalTag, Badge, Card, ErrorBox, Loading, Modal, Field, Shell, useLoad, useToast, withForce } from "./ui";
 import { MonitoringPanel, TeamPanel } from "./Panels";
 import { StatusTree } from "./StatusTree";
+import { ReviewQueue } from "./ReviewQueue";
 
 export default function InchargePage() {
   const s = session.get();
   const auditId = s.audit.id;
   const { data, error, loading, reload } = useLoad(() => api(`/${auditId}`), [auditId]);
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("verify");
+  const [toVerify, setToVerify] = useState(null);
   const [toast, notify] = useToast();
   const [busy, setBusy] = useState("");
   const [actErr, setActErr] = useState(null);
@@ -68,11 +70,17 @@ export default function InchargePage() {
       </div>
 
       <nav className="au-tabs" role="tablist">
-        {[["overview", "Progress"], ["items", "Products"], ["team", "Team"]].map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>
+        {[["verify", "To verify"], ["overview", "Progress"], ["items", "Products"], ["team", "Team"]].map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
+            {l}{k === "verify" && toVerify > 0 && <span className="au-chip">{toVerify}</span>}
+          </button>
         ))}
       </nav>
 
+      {/* stays mounted so the count on the tab is always up to date */}
+      <div style={{ display: tab === "verify" ? "block" : "none" }}>
+        <ReviewQueue auditId={auditId} canAct={editable} refreshKey={tick} onChanged={refresh} onCount={setToVerify} />
+      </div>
       {tab === "overview" && <MonitoringPanel who="member" auditId={auditId} refreshKey={tick} />}
       {tab === "items" && <StatusTree role="incharge" auditId={auditId} canAct={editable} refreshKey={tick} onChanged={refresh} />}
       {tab === "team" && <TeamPanel who="member" auditId={auditId} auditStatus={a.status} isOwner={false} />}
