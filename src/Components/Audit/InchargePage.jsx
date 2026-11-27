@@ -4,20 +4,24 @@ import { api, ROUTE_BASE, session } from "./api";
 import { ApprovalTag, Badge, Card, ErrorBox, Loading, Modal, Field, Shell, useLoad, useToast, withForce } from "./ui";
 import { MonitoringPanel, TeamPanel } from "./Panels";
 import { StatusTree } from "./StatusTree";
-import { ReviewQueue } from "./ReviewQueue";
+import { ToVerifyPanel } from "./ToVerify";
 
 export default function InchargePage() {
   const s = session.get();
   const auditId = s.audit.id;
   const { data, error, loading, reload } = useLoad(() => api(`/${auditId}`), [auditId]);
-  const [tab, setTab] = useState("verify");
-  const [toVerify, setToVerify] = useState(null);
+  const [tab, setTab] = useState("overview");
   const [toast, notify] = useToast();
   const [busy, setBusy] = useState("");
   const [actErr, setActErr] = useState(null);
   const [tick, setTick] = useState(0);
   const [dlg, setDlg] = useState(null); // "approve" | "reopen"
   const [note, setNote] = useState("");
+
+  // number of counted products still waiting for verification (shown on the "To verify" tab)
+  const tree = useLoad(() => api(`/${auditId}/tree`), [auditId, tick]);
+  const toVerify = [...(tree.data?.pending || []), ...(tree.data?.completed || [])]
+    .reduce((n, c) => n + Math.max(0, c.done - c.verified - c.sentBack), 0);
 
   const refresh = () => { reload(); setTick((t) => t + 1); };
 
@@ -70,18 +74,15 @@ export default function InchargePage() {
       </div>
 
       <nav className="au-tabs" role="tablist">
-        {[["verify", "To verify"], ["overview", "Progress"], ["items", "Products"], ["team", "Team"]].map(([k, l]) => (
+        {[["overview", "Progress"], ["verify", "To verify"], ["items", "Products"], ["team", "Team"]].map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
             {l}{k === "verify" && toVerify > 0 && <span className="au-chip">{toVerify}</span>}
           </button>
         ))}
       </nav>
 
-      {/* stays mounted so the count on the tab is always up to date */}
-      <div style={{ display: tab === "verify" ? "block" : "none" }}>
-        <ReviewQueue auditId={auditId} canAct={editable} refreshKey={tick} onChanged={refresh} onCount={setToVerify} />
-      </div>
       {tab === "overview" && <MonitoringPanel who="member" auditId={auditId} refreshKey={tick} />}
+      {tab === "verify" && <ToVerifyPanel auditId={auditId} canAct={editable} refreshKey={tick} onChanged={refresh} />}
       {tab === "items" && <StatusTree role="incharge" auditId={auditId} canAct={editable} refreshKey={tick} onChanged={refresh} />}
       {tab === "team" && <TeamPanel who="member" auditId={auditId} auditStatus={a.status} isOwner={false} />}
 
