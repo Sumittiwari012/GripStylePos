@@ -5,6 +5,7 @@ import { ApprovalTag, Badge, Card, ErrorBox, Loading, Modal, Field, Shell, useLo
 import { MonitoringPanel, TeamPanel } from "./Panels";
 import { StatusTree } from "./StatusTree";
 import { PendingPanel } from "./PendingPanel";
+import { VerifyPendingPanel } from "./VerifyPendingPanel";
 
 export default function InchargePage() {
   const s = session.get();
@@ -69,13 +70,14 @@ export default function InchargePage() {
       </div>
 
       <nav className="au-tabs" role="tablist">
-        {[["overview", "Progress"], ["pending", "Pending"], ["items", "Products"], ["team", "Team"]].map(([k, l]) => (
+        {[["overview", "Progress"], ["pending", "Pending"], ["toverify", "To verify"], ["items", "Products"], ["team", "Team"]].map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>
         ))}
       </nav>
 
       {tab === "overview" && <MonitoringPanel who="member" auditId={auditId} refreshKey={tick} />}
       {tab === "pending" && <PendingPanel auditId={auditId} refreshKey={tick} />}
+      {tab === "toverify" && <VerifyPendingPanel auditId={auditId} refreshKey={tick} />}
       {tab === "items" && <StatusTree role="incharge" auditId={auditId} canAct={editable} refreshKey={tick} onChanged={refresh} />}
       {tab === "team" && <TeamPanel who="member" auditId={auditId} auditStatus={a.status} isOwner={false} />}
 
